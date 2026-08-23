@@ -106,6 +106,24 @@ struct ShelfView: View {
                 }
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                guard let url = shelf.createMarkdownNote() else {
+                    NSSound.beep()
+                    return
+                }
+                shelf.openMarkdownNote(url)
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .glassEffect(.regular.interactive(), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("New Markdown Note")
+            .padding(8)
+        }
     }
 
     private var collapseTab: some View {

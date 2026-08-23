@@ -70,10 +70,6 @@ final class ShelfController {
         commit()
     }
 
-    func dragOutSucceeded(id: ShelfItem.ID) {
-        dragOutSucceeded(ids: [id])
-    }
-
     func dragOutSucceeded(ids: [ShelfItem.ID]) {
         let ids = Set(ids)
         let removableIDs = Set(items.filter { ids.contains($0.id) && !$0.locked }.map(\.id))
@@ -111,15 +107,6 @@ final class ShelfController {
         return items.filter { $0.id == id && $0.exists }
     }
 
-    func restoreLastRemoved() {
-        while !history.isEmpty {
-            let id = history[0].id
-            if restoreFromHistory(id: id) { return }
-            history.removeFirst()
-        }
-        persistHistory()
-    }
-
     @discardableResult
     func restoreFromHistory(id: ShelfItem.ID) -> Bool {
         guard let index = history.firstIndex(where: { $0.id == id }) else { return false }
@@ -145,6 +132,40 @@ final class ShelfController {
         onUndoNoticeChanged?(nil)
         dismissUndoTask?.cancel()
         persistHistory()
+    }
+
+    @discardableResult
+    func createMarkdownNote() -> URL? {
+        do {
+            let directory = store.itemsURL.deletingLastPathComponent()
+                .appendingPathComponent("Items", isDirectory: true)
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent("Untitled.md")
+            try Data().write(to: url, options: .atomic)
+            return add(urls: [url]) == 1 ? url : nil
+        } catch {
+            NSLog("Ittan: failed to create quick note: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    func openMarkdownNote(_ url: URL) {
+        let workspace = NSWorkspace.shared
+        let editorURL = NoteEditorPreference.applicationURL
+        guard FileManager.default.fileExists(atPath: editorURL.path) else {
+            NSLog("Ittan: note editor is not available at \(editorURL.path)")
+            NSSound.beep()
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        workspace.open([url], withApplicationAt: editorURL, configuration: configuration) { _, error in
+            if let error {
+                NSLog("Ittan: failed to open quick note: \(error.localizedDescription)")
+                NSSound.beep()
+            }
+        }
     }
 
     func undoLastRemoval() {

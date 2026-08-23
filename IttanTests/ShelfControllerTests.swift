@@ -29,7 +29,7 @@ struct ShelfControllerTests {
         controller.add(urls: [file])
         let id = try #require(controller.items.first?.id)
 
-        controller.dragOutSucceeded(id: id)
+        controller.dragOutSucceeded(ids: [id])
 
         #expect(controller.items.isEmpty)
         #expect(FileManager.default.fileExists(atPath: file.path))
@@ -55,7 +55,7 @@ struct ShelfControllerTests {
         let id = try #require(controller.items.first?.id)
 
         controller.toggleLock(id: id)
-        controller.dragOutSucceeded(id: id)
+        controller.dragOutSucceeded(ids: [id])
 
         #expect(controller.items.first?.id == id)
         #expect(controller.items.first?.locked == true)
@@ -110,7 +110,7 @@ struct ShelfControllerTests {
         #expect(controller.history.first?.id == id)
 
         let reloaded = ShelfController(store: fixture.store)
-        reloaded.restoreLastRemoved()
+        #expect(reloaded.restoreFromHistory(id: id))
         #expect(reloaded.items.first?.id == id)
         #expect(reloaded.history.isEmpty)
     }
@@ -166,6 +166,20 @@ struct ShelfControllerTests {
 
         #expect(controller.undoNotice == nil)
         #expect(controller.items.first?.id == id)
+    }
+
+    @Test("Quick Note creates an empty Markdown file and adds it to the shelf")
+    func createsQuickNote() throws {
+        let fixture = try ControllerFixture()
+        defer { fixture.cleanUp() }
+        let controller = ShelfController(store: fixture.store)
+
+        let url = try #require(controller.createMarkdownNote())
+
+        let item = try #require(controller.items.first)
+        #expect(item.url == url)
+        #expect(item.displayName == "Untitled.md")
+        #expect(try Data(contentsOf: item.url).isEmpty)
     }
 }
 

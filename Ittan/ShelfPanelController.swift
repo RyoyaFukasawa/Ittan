@@ -12,7 +12,6 @@ final class ShelfPanelController {
     private let maximumVisibleItems = 5
     private let edgeMargin: CGFloat = 0
     private var panel: ShelfPanel?
-    private var moveObserver: NSObjectProtocol?
     private var isCollapsed = false
     private var expandedPanelSize = NSSize(width: 162, height: 104)
     private var pendingPanelResize: Task<Void, Never>?
@@ -162,17 +161,6 @@ final class ShelfPanelController {
         hostingView.autoresizingMask = [.width, .height]
         panel.contentView = hostingView
 
-        moveObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didMoveNotification,
-            object: panel,
-            queue: .main
-        ) { [weak self, weak panel] _ in
-            MainActor.assumeIsolated {
-                guard let self, let panel, panel.isVisible else { return }
-                self.savePosition(of: panel)
-            }
-        }
-
         self.panel = panel
         return panel
     }
@@ -210,34 +198,6 @@ final class ShelfPanelController {
         }
     }
 
-    private func constrainToVisibleScreen(_ panel: NSPanel) {
-        guard let screen = panel.screen ?? ScreenResolver.screenUnderPointer() else { return }
-        var origin = panel.frame.origin
-        let visible = screen.visibleFrame
-        origin.x = min(max(origin.x, visible.minX), visible.maxX - panel.frame.width)
-        origin.y = min(max(origin.y, visible.minY), visible.maxY - panel.frame.height)
-        if !isCollapsed, origin != panel.frame.origin {
-            panel.setFrameOrigin(origin)
-        }
-    }
-
-    private func savePosition(of panel: NSPanel) {
-        let screen = panel.screen ?? ScreenResolver.screenUnderPointer()
-        guard let screen else { return }
-        let id = ScreenResolver.identifier(for: screen)
-        UserDefaults.standard.set(panel.frame.origin.x, forKey: "panel.horizontal.\(id).x")
-        UserDefaults.standard.set(panel.frame.origin.y, forKey: "panel.horizontal.\(id).y")
-        UserDefaults.standard.set(true, forKey: "panel.horizontal.\(id).saved")
-    }
-
-    private func storedOrigin(for screenID: String) -> NSPoint? {
-        let defaults = UserDefaults.standard
-        guard defaults.bool(forKey: "panel.horizontal.\(screenID).saved") else { return nil }
-        return NSPoint(
-            x: defaults.double(forKey: "panel.horizontal.\(screenID).x"),
-            y: defaults.double(forKey: "panel.horizontal.\(screenID).y")
-        )
-    }
 }
 
 @MainActor

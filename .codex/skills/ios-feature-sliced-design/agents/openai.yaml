@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Feature-Sliced Design"
+  short_description: "SwiftUI/TCA向けFSD構成ガイド"
+  default_prompt: "$ios-feature-sliced-design を使って、この SwiftUI/TCA iOS module を FSD 境界で整理してください。"

@@ -9,6 +9,10 @@ struct IttanApp: App {
         MenuBarExtra("Ittan", systemImage: "tray.full") {
             IttanMenuView()
         }
+
+        Settings {
+            IttanSettingsView()
+        }
     }
 }
 
@@ -48,9 +52,61 @@ private struct IttanMenuView: View {
             NSApp.activate(ignoringOtherApps: true)
         }
 
+        SettingsLink {
+            Text("Settings…")
+        }
+
         Button("Quit Ittan") {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+}
+
+private struct IttanSettingsView: View {
+    @State private var editorURL = NoteEditorPreference.applicationURL
+
+    var body: some View {
+        Form {
+            LabeledContent("Markdown editor") {
+                HStack(spacing: 8) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: editorURL.path))
+                        .resizable()
+                        .frame(width: 24, height: 24)
+
+                    Text(editorURL.deletingPathExtension().lastPathComponent)
+                        .lineLimit(1)
+
+                    Button("Choose…", action: chooseEditor)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Use TextEdit") {
+                    NoteEditorPreference.reset()
+                    editorURL = NoteEditorPreference.applicationURL
+                }
+                .disabled(editorURL.standardizedFileURL == NoteEditorPreference.textEditURL.standardizedFileURL)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(8)
+        .frame(width: 430, height: 150)
+    }
+
+    private func chooseEditor() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Markdown Editor"
+        panel.prompt = "Choose"
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        NoteEditorPreference.select(url)
+        editorURL = url
     }
 }
