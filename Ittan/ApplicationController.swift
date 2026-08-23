@@ -12,6 +12,10 @@ final class ApplicationController {
         let shelf = ShelfController.shared
         shelf.onItemsChanged = { items in
             ShelfPanelController.shared.itemsDidChange(items)
+            UndoToastPanelController.shared.reposition()
+        }
+        shelf.onUndoNoticeChanged = { notice in
+            UndoToastPanelController.shared.update(notice: notice)
         }
 
         dragMonitor = DragMonitor(

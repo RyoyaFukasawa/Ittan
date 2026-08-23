@@ -24,6 +24,10 @@ struct ShelfStore {
             .appendingPathComponent("items.json", isDirectory: false)
     }
 
+    var historyURL: URL {
+        itemsURL.deletingLastPathComponent().appendingPathComponent("history.json")
+    }
+
     func load() -> [ShelfItem] {
         guard let data = try? Data(contentsOf: itemsURL),
               let decoded = try? JSONDecoder.ittan.decode([ShelfItem].self, from: data) else {
@@ -38,6 +42,21 @@ struct ShelfStore {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder.ittan.encode(items)
         try data.write(to: itemsURL, options: .atomic)
+    }
+
+    func loadHistory() -> [ShelfItem] {
+        guard let data = try? Data(contentsOf: historyURL),
+              let decoded = try? JSONDecoder.ittan.decode([ShelfItem].self, from: data) else {
+            return []
+        }
+        return decoded.filter { fileManager.fileExists(atPath: $0.path) }
+    }
+
+    func saveHistory(_ items: [ShelfItem]) throws {
+        let directory = historyURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = try JSONEncoder.ittan.encode(items)
+        try data.write(to: historyURL, options: .atomic)
     }
 }
 

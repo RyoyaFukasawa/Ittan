@@ -21,6 +21,11 @@ final class ShelfPanelController {
 
     private init() {}
 
+    var auxiliaryAnchorFrame: NSRect? {
+        guard let panel, panel.isVisible, !isCollapsed else { return nil }
+        return panel.frame
+    }
+
     func show(on requestedScreen: NSScreen? = nil) {
         pendingPanelResize?.cancel()
         let panel = panel ?? makePanel()
@@ -178,7 +183,7 @@ final class ShelfPanelController {
         let height = count == 0
             ? emptyHeight
             : CGFloat(visibleItems) * itemHeight
-                + (count > maximumVisibleItems ? 40 : 16)
+                + (count > maximumVisibleItems ? 96 : 72)
         expandedPanelSize = NSSize(width: panelWidth, height: height)
         guard !isCollapsed else { return }
 
@@ -274,7 +279,6 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        guard ShelfController.shared.isPanelCollapsed else { return super.menu(for: event) }
         let menu = NSMenu()
         let clear = NSMenuItem(title: "Clear Ittan", action: #selector(clearShelf), keyEquivalent: "")
         clear.target = self
@@ -285,6 +289,7 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
     @objc private func clearShelf() {
         ShelfController.shared.clear()
     }
+
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard PasteboardImporter.canImport(sender.draggingPasteboard) else { return [] }

@@ -35,6 +35,18 @@ struct ShelfStoreTests {
 
         #expect(fixture.store.load().isEmpty)
     }
+
+    @Test("Removal history survives a save and load round trip")
+    func historyRoundTrip() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let file = try fixture.makeFile("history.txt")
+        let item = ShelfItem(url: file, addedAt: Date(timeIntervalSince1970: 1234))
+
+        try fixture.store.saveHistory([item])
+
+        #expect(fixture.store.loadHistory() == [item])
+    }
 }
 
 private struct Fixture {
