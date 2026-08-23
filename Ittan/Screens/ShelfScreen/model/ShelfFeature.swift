@@ -31,6 +31,8 @@ struct ShelfFeature {
         case clearHistoryButtonTapped
         case createNoteButtonTapped
         case dragOutSucceeded([ShelfItem.ID])
+        case fileMonitoringStarted
+        case refreshFileLocations
         case prepareDrag(ShelfItem.ID)
         case removeButtonTapped(ShelfItem.ID)
         case renameRequested(ShelfItem.ID, String)
@@ -100,6 +102,21 @@ struct ShelfFeature {
                     state.items.filter { ids.contains($0.id) && !$0.locked }.map(\.id)
                 )
                 return remove(ids: removableIDs, state: &state)
+
+            case .fileMonitoringStarted:
+                return .run { send in
+                    while !Task.isCancelled {
+                        await send(.refreshFileLocations)
+                        try await clock.sleep(for: .seconds(1))
+                    }
+                }
+
+            case .refreshFileLocations:
+                let refreshed = state.items.map { $0.refreshingLocation() }
+                guard refreshed != state.items else { return .none }
+                state.items = refreshed
+                persistItems(state.items)
+                return .none
 
             case let .prepareDrag(id):
                 if !state.selectedIDs.contains(id) {

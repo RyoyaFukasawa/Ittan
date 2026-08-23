@@ -14,15 +14,19 @@ extension NoteClient: DependencyKey {
             return
         }
 
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
         NSWorkspace.shared.open(
             [url],
             withApplicationAt: editorURL,
-            configuration: NSWorkspace.OpenConfiguration()
-        ) { _, error in
+            configuration: configuration
+        ) { application, error in
             if let error {
                 NSLog("Ittan: failed to open quick note: \(error.localizedDescription)")
                 NSSound.beep()
+                return
             }
+            application?.activate(options: [.activateAllWindows])
         }
     }
 

@@ -9,6 +9,7 @@ final class ShelfPanelController {
     private let collapsedPanelSize = NSSize(width: 80, height: 80)
     private let itemHeight: CGFloat = 102
     private let emptyHeight: CGFloat = 104
+    private let undoToastHeight: CGFloat = 41
     private let maximumVisibleItems = 5
     private let edgeMargin: CGFloat = 0
     private var panel: ShelfPanel?
@@ -20,11 +21,6 @@ final class ShelfPanelController {
 
     private init() {}
 
-    var auxiliaryAnchorFrame: NSRect? {
-        guard let panel, panel.isVisible, !isCollapsed else { return nil }
-        return panel.frame
-    }
-
     func show(on requestedScreen: NSScreen? = nil) {
         pendingPanelResize?.cancel()
         let panel = panel ?? makePanel()
@@ -33,7 +29,10 @@ final class ShelfPanelController {
         IttanStore.shelf.send(.setPanelCollapsed(false))
         panel.tabIsVisible = false
         panel.horizontalSwipeEnabled = true
-        updateSize(panel)
+        updateExpandedPanelSize(
+            itemCount: IttanStore.shelf.items.count,
+            hasUndoNotice: IttanStore.shelf.undoNotice != nil
+        )
 
         position(panel, on: screen, animated: false)
 
@@ -86,15 +85,16 @@ final class ShelfPanelController {
         }
     }
 
-    func itemsDidChange(_ items: [ShelfItem]) {
+    func layoutDidChange(_ items: [ShelfItem], hasUndoNotice: Bool) {
         guard let panel else {
             if !items.isEmpty { show() }
             return
         }
 
-        updateSize(panel)
-        if let screen = panel.screen ?? ScreenResolver.screenUnderPointer() {
-            position(panel, on: screen, animated: false)
+        updateExpandedPanelSize(itemCount: items.count, hasUndoNotice: hasUndoNotice)
+        if !items.isEmpty,
+           let screen = panel.screen ?? ScreenResolver.screenUnderPointer() {
+            position(panel, on: screen, animated: panel.isVisible && !isCollapsed)
         }
         if items.isEmpty {
             panel.orderOut(nil)
@@ -165,19 +165,16 @@ final class ShelfPanelController {
         return panel
     }
 
-    private func updateSize(_ panel: NSPanel) {
-        let count = IttanStore.shelf.items.count
-        let visibleItems = min(max(count, 1), maximumVisibleItems)
-        let height = count == 0
+    private func updateExpandedPanelSize(itemCount: Int, hasUndoNotice: Bool) {
+        let visibleItems = min(max(itemCount, 1), maximumVisibleItems)
+        let shelfHeight = itemCount == 0
             ? emptyHeight
             : CGFloat(visibleItems) * itemHeight
-                + (count > maximumVisibleItems ? 96 : 72)
-        expandedPanelSize = NSSize(width: panelWidth, height: height)
-        guard !isCollapsed else { return }
-
-        var frame = panel.frame
-        frame.size = expandedPanelSize
-        panel.setFrame(frame, display: panel.isVisible, animate: false)
+                + (itemCount > maximumVisibleItems ? 96 : 72)
+        expandedPanelSize = NSSize(
+            width: panelWidth,
+            height: shelfHeight + (hasUndoNotice ? undoToastHeight : 0)
+        )
     }
 
     private func position(_ panel: NSPanel, on screen: NSScreen?, animated: Bool = false) {
@@ -192,7 +189,12 @@ final class ShelfPanelController {
         )
         let targetFrame = NSRect(origin: origin, size: targetSize)
         if animated {
-            panel.setFrame(targetFrame, display: true, animate: true)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.26
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                panel.animator().setFrame(targetFrame, display: true)
+            }
         } else {
             panel.setFrame(targetFrame, display: true, animate: false)
         }

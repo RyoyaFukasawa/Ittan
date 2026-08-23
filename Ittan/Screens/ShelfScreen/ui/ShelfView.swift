@@ -28,7 +28,14 @@ struct ShelfView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            shelfContent
+            VStack(spacing: 7) {
+                shelfContent
+
+                if let notice = store.undoNotice {
+                    UndoToastView(notice: notice)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+            }
                 .frame(width: shelfWidth)
                 .offset(
                     x: store.isPanelCollapsed
@@ -42,6 +49,10 @@ struct ShelfView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .animation(.smooth(duration: 0.3, extraBounce: 0), value: store.isPanelCollapsed)
+        .animation(.smooth(duration: 0.26, extraBounce: 0), value: store.undoNotice?.id)
+        .task {
+            await store.send(.fileMonitoringStarted).finish()
+        }
     }
 
     private var shelfContent: some View {
@@ -53,10 +64,17 @@ struct ShelfView: View {
                         LazyVStack(spacing: 8) {
                             ForEach(store.items) { item in
                                 ShelfItemRow(store: store, item: item)
+                                    .transition(
+                                        .opacity.combined(with: .scale(scale: 0.96))
+                                    )
                             }
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 36)
+                        .animation(
+                            .smooth(duration: 0.26, extraBounce: 0),
+                            value: store.items.map(\.id)
+                        )
                     }
                     .scrollIndicators(.hidden)
                 }
@@ -221,6 +239,7 @@ private struct ShelfItemRow: View {
                     .font(.system(size: 8, weight: .semibold))
                     .frame(width: 22, height: 22)
                     .glassEffect(.regular.interactive(), in: Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
@@ -228,8 +247,7 @@ private struct ShelfItemRow: View {
             .disabled(item.locked)
             .help("Remove from Ittan")
             .accessibilityLabel("Remove from Ittan")
-            .padding(.top, 2)
-            .padding(.trailing, 2)
+            .offset(x: -2, y: 2)
 
             if item.locked {
                 Image(systemName: "lock.fill")

@@ -76,6 +76,23 @@ struct ShelfFeatureTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 
+    @Test("Refreshing file locations updates externally renamed items")
+    func refreshesExternallyRenamedItem() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let file = try fixture.makeFile("before.txt")
+        let item = ShelfItem(url: file)
+        let renamed = fixture.root.appendingPathComponent("after.txt")
+        let store = fixture.testStore(items: [item])
+        store.exhaustivity = .off
+        try FileManager.default.moveItem(at: file, to: renamed)
+
+        await store.send(.refreshFileLocations)
+
+        #expect(store.state.items.first?.displayName == "after.txt")
+        #expect(store.state.items.first?.exists == true)
+    }
+
     @Test("Command and shift selection build a multi-item selection")
     func multiSelection() async throws {
         let fixture = try FeatureFixture()

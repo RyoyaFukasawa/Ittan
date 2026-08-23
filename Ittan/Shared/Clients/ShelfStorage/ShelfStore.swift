@@ -34,7 +34,21 @@ struct ShelfStore: @unchecked Sendable {
             return []
         }
 
-        return decoded.filter { fileManager.fileExists(atPath: $0.path) }
+        let upgraded = decoded.map { item in
+            item.hasBookmark
+                ? item.refreshingLocation()
+                : ShelfItem(
+                    id: item.id,
+                    url: item.url,
+                    addedAt: item.addedAt,
+                    isLocked: item.isLocked
+                )
+        }
+        let available = upgraded.filter { fileManager.fileExists(atPath: $0.path) }
+        if upgraded != decoded || available.count != upgraded.count {
+            try? save(available)
+        }
+        return available
     }
 
     func save(_ items: [ShelfItem]) throws {
@@ -49,7 +63,21 @@ struct ShelfStore: @unchecked Sendable {
               let decoded = try? JSONDecoder.ittan.decode([ShelfItem].self, from: data) else {
             return []
         }
-        return decoded.filter { fileManager.fileExists(atPath: $0.path) }
+        let upgraded = decoded.map { item in
+            item.hasBookmark
+                ? item.refreshingLocation()
+                : ShelfItem(
+                    id: item.id,
+                    url: item.url,
+                    addedAt: item.addedAt,
+                    isLocked: item.isLocked
+                )
+        }
+        let available = upgraded.filter { fileManager.fileExists(atPath: $0.path) }
+        if upgraded != decoded || available.count != upgraded.count {
+            try? saveHistory(available)
+        }
+        return available
     }
 
     func saveHistory(_ items: [ShelfItem]) throws {

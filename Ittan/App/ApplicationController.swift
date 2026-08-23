@@ -15,9 +15,11 @@ final class ApplicationController: NSObject {
         observe { [weak self] in
             guard self != nil else { return }
             let items = IttanStore.shelf.items
-            ShelfPanelController.shared.itemsDidChange(items)
-            UndoToastPanelController.shared.reposition()
-            UndoToastPanelController.shared.update(notice: IttanStore.shelf.undoNotice)
+            let undoNotice = IttanStore.shelf.undoNotice
+            ShelfPanelController.shared.layoutDidChange(
+                items,
+                hasUndoNotice: undoNotice != nil
+            )
         }
 
         dragMonitor = DragMonitor(

@@ -27,6 +27,43 @@ struct ShelfStoreTests {
         #expect(fixture.store.load().isEmpty)
     }
 
+    @Test("Bookmarks follow files renamed outside Ittan")
+    func followsExternalRename() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let original = try fixture.makeFile("Untitled.md")
+        let renamed = fixture.root.appendingPathComponent("Meeting Notes.md")
+
+        try fixture.store.save([ShelfItem(url: original)])
+        try FileManager.default.moveItem(at: original, to: renamed)
+
+        let item = try #require(fixture.store.load().first)
+        #expect(item.path == ShelfItem.normalizedPath(for: renamed))
+        #expect(item.displayName == "Meeting Notes.md")
+        #expect(item.exists)
+    }
+
+    @Test("Managed notes follow an atomic rename that replaces the file identity")
+    func followsAtomicManagedRename() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let items = fixture.root.appendingPathComponent("Items", isDirectory: true)
+        let directory = items.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let original = directory.appendingPathComponent("Untitled.md")
+        try Data().write(to: original)
+        let item = ShelfItem(url: original)
+
+        try FileManager.default.removeItem(at: original)
+        let renamed = directory.appendingPathComponent("Meeting Notes.md")
+        try Data("replacement".utf8).write(to: renamed)
+
+        let refreshed = item.refreshingLocation()
+        #expect(refreshed.path == ShelfItem.normalizedPath(for: renamed))
+        #expect(refreshed.displayName == "Meeting Notes.md")
+        #expect(refreshed.exists)
+    }
+
     @Test("Malformed metadata returns an empty shelf")
     func malformedMetadata() throws {
         let fixture = try Fixture()
