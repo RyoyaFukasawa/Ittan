@@ -208,6 +208,12 @@ struct ShelfView: View {
     }
 }
 
+private enum ShelfItemLayout {
+    static let thumbnailCornerRadius: CGFloat = 7
+    static let contentPadding: CGFloat = 6
+    static let containerCornerRadius = thumbnailCornerRadius + contentPadding
+}
+
 private struct ShelfItemRow: View {
     let store: StoreOf<ShelfFeature>
     let item: ShelfItem
@@ -238,11 +244,11 @@ private struct ShelfItemRow: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .semibold))
                     .frame(width: 22, height: 22)
-                    .glassEffect(.regular.interactive(), in: Circle())
+                    .glassEffect(.clear.interactive(), in: Circle())
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary.opacity(0.72))
             .opacity(isHovered && !item.locked ? 1 : 0)
             .disabled(item.locked)
             .help("Remove from Ittan")
@@ -262,7 +268,10 @@ private struct ShelfItemRow: View {
         }
         .frame(width: 100, height: 94)
         .background {
-            RoundedRectangle(cornerRadius: 9)
+            RoundedRectangle(
+                cornerRadius: ShelfItemLayout.containerCornerRadius,
+                style: .continuous
+            )
                 .fill(
                     store.selectedIDs.contains(item.id)
                         ? Color.primary.opacity(0.09)
@@ -270,12 +279,20 @@ private struct ShelfItemRow: View {
                 )
                 .overlay {
                     if store.selectedIDs.contains(item.id) {
-                        RoundedRectangle(cornerRadius: 9)
+                        RoundedRectangle(
+                            cornerRadius: ShelfItemLayout.containerCornerRadius,
+                            style: .continuous
+                        )
                             .strokeBorder(Color.primary.opacity(0.24), lineWidth: 1)
                     }
                 }
         }
-        .clipShape(.rect(cornerRadius: 9))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: ShelfItemLayout.containerCornerRadius,
+                style: .continuous
+            )
+        )
         .onHover { isHovered = $0 }
     }
 }
@@ -296,7 +313,7 @@ private struct ShelfThumbnail: View {
                     .aspectRatio(contentMode: .fit)
             }
         }
-        .clipShape(.rect(cornerRadius: 7))
+        .clipShape(.rect(cornerRadius: ShelfItemLayout.thumbnailCornerRadius))
         .task(id: url) {
             image = await ThumbnailLoader.thumbnail(for: url, size: CGSize(width: 84, height: 84))
         }
