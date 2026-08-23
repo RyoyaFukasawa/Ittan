@@ -21,48 +21,52 @@ enum PasteboardImporter {
     }
 
     @discardableResult
-    static func importItems(from pasteboard: NSPasteboard) -> Bool {
+    static func importItems(
+        from pasteboard: NSPasteboard,
+        onImport: @escaping @MainActor ([URL]) -> Void
+    ) -> Bool {
         if let urls = pasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL], !urls.isEmpty {
-            return ShelfController.shared.add(urls: urls) > 0
+            onImport(urls)
+            return true
         }
 
-        if receivePromisedFiles(from: pasteboard) {
+        if receivePromisedFiles(from: pasteboard, onImport: onImport) {
             return true
         }
 
         if let url = webURL(from: pasteboard) {
-            return materializeWebLink(url, title: pasteboard.string(forType: .string))
+            return materializeWebLink(url, title: pasteboard.string(forType: .string), onImport: onImport)
         }
 
         if let data = pasteboard.data(forType: .png) {
-            return materialize(data, preferredName: "Image", extension: "png")
+            return materialize(data, preferredName: "Image", extension: "png", onImport: onImport)
         }
         if let image = NSImage(pasteboard: pasteboard),
            let tiff = image.tiffRepresentation,
            let bitmap = NSBitmapImageRep(data: tiff),
            let png = bitmap.representation(using: .png, properties: [:]) {
-            return materialize(png, preferredName: "Image", extension: "png")
+            return materialize(png, preferredName: "Image", extension: "png", onImport: onImport)
         }
         if let data = pasteboard.data(forType: .rtfd) {
-            return materialize(data, preferredName: "Text", extension: "rtfd")
+            return materialize(data, preferredName: "Text", extension: "rtfd", onImport: onImport)
         }
         if let data = pasteboard.data(forType: .rtf) {
-            return materialize(data, preferredName: "Text", extension: "rtf")
+            return materialize(data, preferredName: "Text", extension: "rtf", onImport: onImport)
         }
         if let data = pasteboard.data(forType: .html) {
-            return materialize(data, preferredName: "Web Content", extension: "html")
+            return materialize(data, preferredName: "Web Content", extension: "html", onImport: onImport)
         }
         if let string = pasteboard.string(forType: .string), !string.isEmpty {
-            return materialize(Data(string.utf8), preferredName: title(from: string), extension: "txt")
+            return materialize(Data(string.utf8), preferredName: title(from: string), extension: "txt", onImport: onImport)
         }
         if let color = NSColor(from: pasteboard) {
             let value = color.usingColorSpace(.sRGB).map {
                 String(format: "#%02X%02X%02X%02X", Int($0.redComponent * 255), Int($0.greenComponent * 255), Int($0.blueComponent * 255), Int($0.alphaComponent * 255))
             } ?? color.description
-            return materialize(Data(value.utf8), preferredName: "Color \(value)", extension: "txt")
+            return materialize(Data(value.utf8), preferredName: "Color \(value)", extension: "txt", onImport: onImport)
         }
         return false
     }
@@ -74,34 +78,43 @@ enum PasteboardImporter {
         return url
     }
 
-    private static func materializeWebLink(_ url: URL, title: String?) -> Bool {
+    private static func materializeWebLink(
+        _ url: URL,
+        title: String?,
+        onImport: @escaping @MainActor ([URL]) -> Void
+    ) -> Bool {
         let label = title.flatMap { $0 == url.absoluteString ? nil : $0 } ?? url.host ?? "Link"
         guard let data = try? PropertyListSerialization.data(
             fromPropertyList: ["URL": url.absoluteString],
             format: .binary,
             options: 0
         ) else { return false }
-        return materialize(data, preferredName: label, extension: "webloc")
+        return materialize(data, preferredName: label, extension: "webloc", onImport: onImport)
     }
 
     private static func materialize(
         _ data: Data,
         preferredName: String,
-        extension fileExtension: String
+        extension fileExtension: String,
+        onImport: @escaping @MainActor ([URL]) -> Void
     ) -> Bool {
         do {
             let directory = try makeItemDirectory()
             let filename = sanitized(preferredName).prefix(80)
             let url = directory.appendingPathComponent(String(filename)).appendingPathExtension(fileExtension)
             try data.write(to: url, options: .atomic)
-            return ShelfController.shared.add(urls: [url]) > 0
+            onImport([url])
+            return true
         } catch {
             NSLog("Ittan: could not store dropped content: \(error.localizedDescription)")
             return false
         }
     }
 
-    private static func receivePromisedFiles(from pasteboard: NSPasteboard) -> Bool {
+    private static func receivePromisedFiles(
+        from pasteboard: NSPasteboard,
+        onImport: @escaping @MainActor ([URL]) -> Void
+    ) -> Bool {
         guard let receivers = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver],
               !receivers.isEmpty,
               let directory = try? makeItemDirectory() else { return false }
@@ -112,7 +125,7 @@ enum PasteboardImporter {
                     if let error {
                         NSLog("Ittan: promised file failed: \(error.localizedDescription)")
                     } else {
-                        ShelfController.shared.add(urls: [url])
+                        onImport([url])
                     }
                 }
             }

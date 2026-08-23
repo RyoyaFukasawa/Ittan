@@ -1,4 +1,5 @@
 import AppKit
+import ComposableArchitecture
 import SwiftUI
 
 @main
@@ -28,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 private struct IttanMenuView: View {
-    @State private var shelf = ShelfController.shared
+    private let store = IttanStore.shelf
 
     var body: some View {
         Button("Show Ittan") {
@@ -36,13 +37,13 @@ private struct IttanMenuView: View {
         }
 
         Button("Clear Shelf") {
-            shelf.clear()
+            store.send(.clearButtonTapped)
         }
-        .disabled(shelf.items.isEmpty)
+        .disabled(store.items.isEmpty)
 
         Divider()
 
-        Text("\(shelf.items.count) item\(shelf.items.count == 1 ? "" : "s")")
+        Text("\(store.items.count) item\(store.items.count == 1 ? "" : "s")")
             .foregroundStyle(.secondary)
 
         Divider()

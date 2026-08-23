@@ -1,6 +1,6 @@
 import Foundation
 
-struct ShelfStore {
+struct ShelfStore: @unchecked Sendable {
     let itemsURL: URL
     let fileManager: FileManager
 

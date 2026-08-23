@@ -1,21 +1,23 @@
 import AppKit
+import ComposableArchitecture
 
 @MainActor
-final class ApplicationController {
+final class ApplicationController: NSObject {
     static let shared = ApplicationController()
 
     private var dragMonitor: DragMonitor?
 
-    private init() {}
+    private override init() {
+        super.init()
+    }
 
     func start() {
-        let shelf = ShelfController.shared
-        shelf.onItemsChanged = { items in
+        observe { [weak self] in
+            guard self != nil else { return }
+            let items = IttanStore.shelf.items
             ShelfPanelController.shared.itemsDidChange(items)
             UndoToastPanelController.shared.reposition()
-        }
-        shelf.onUndoNoticeChanged = { notice in
-            UndoToastPanelController.shared.update(notice: notice)
+            UndoToastPanelController.shared.update(notice: IttanStore.shelf.undoNotice)
         }
 
         dragMonitor = DragMonitor(
@@ -30,7 +32,7 @@ final class ApplicationController {
         )
         dragMonitor?.start()
 
-        if !shelf.items.isEmpty {
+        if !IttanStore.shelf.items.isEmpty {
             ShelfPanelController.shared.show()
         }
     }

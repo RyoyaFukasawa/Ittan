@@ -69,7 +69,7 @@ private struct UndoToastView: View {
             Spacer(minLength: 2)
 
             Button("Undo") {
-                ShelfController.shared.undoLastRemoval()
+                IttanStore.shelf.send(.undoButtonTapped)
             }
             .buttonStyle(.plain)
             .font(.system(size: 10, weight: .semibold))

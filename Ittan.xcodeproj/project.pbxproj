@@ -5,6 +5,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		100000000000000000000090 = {isa = PBXBuildFile; productRef = 100000000000000000000093; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		100000000000000000000031 = {
 			isa = PBXContainerItemProxy;
@@ -37,7 +41,7 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		100000000000000000000050 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		100000000000000000000050 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000090); runOnlyForDeploymentPostprocessing = 0; };
 		100000000000000000000051 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
@@ -68,7 +72,7 @@
 			dependencies = ();
 			fileSystemSynchronizedGroups = (100000000000000000000040);
 			name = Ittan;
-			packageProductDependencies = ();
+			packageProductDependencies = (100000000000000000000093);
 			productName = Ittan;
 			productReference = 100000000000000000000020;
 			productType = "com.apple.product-type.application";
@@ -106,6 +110,7 @@
 			knownRegions = (en, Base);
 			mainGroup = 100000000000000000000002;
 			preferredProjectObjectVersion = 77;
+			packageReferences = (100000000000000000000092);
 			productRefGroup = 100000000000000000000003;
 			projectDirPath = "";
 			projectRoot = "";
@@ -147,15 +152,14 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.Ittan;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
-		100000000000000000000083 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_ENTITLEMENTS = Ittan/Ittan.entitlements; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Ittan/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks"); MACOSX_DEPLOYMENT_TARGET = 26.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.Ittan; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_APPROACHABLE_CONCURRENCY = YES; SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; }; name = Release; };
-		100000000000000000000084 = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.IttanTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ittan.app/Contents/MacOS/Ittan"; }; name = Debug; };
-		100000000000000000000085 = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.IttanTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ittan.app/Contents/MacOS/Ittan"; }; name = Release; };
+		100000000000000000000083 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_ENTITLEMENTS = Ittan/Ittan.entitlements; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Ittan/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks"); MACOSX_DEPLOYMENT_TARGET = 26.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.Ittan; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_APPROACHABLE_CONCURRENCY = YES; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; }; name = Release; };
+		100000000000000000000084 = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.IttanTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ittan.app/Contents/MacOS/Ittan"; }; name = Debug; };
+		100000000000000000000085 = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.ryoyafukasawa.IttanTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ittan.app/Contents/MacOS/Ittan"; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -163,6 +167,22 @@
 		100000000000000000000071 = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000084, 100000000000000000000085); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		100000000000000000000072 = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000080, 100000000000000000000081); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		100000000000000000000092 = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture";
+			requirement = {kind = upToNextMajorVersion; minimumVersion = 1.26.0; };
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		100000000000000000000093 = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000092;
+			productName = ComposableArchitecture;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 100000000000000000000001;
 }

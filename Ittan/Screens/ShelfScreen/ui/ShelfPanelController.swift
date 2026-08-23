@@ -30,7 +30,7 @@ final class ShelfPanelController {
         let panel = panel ?? makePanel()
         let screen = requestedScreen ?? panel.screen ?? ScreenResolver.screenUnderPointer()
         isCollapsed = false
-        ShelfController.shared.isPanelCollapsed = false
+        IttanStore.shelf.send(.setPanelCollapsed(false))
         panel.tabIsVisible = false
         panel.horizontalSwipeEnabled = true
         updateSize(panel)
@@ -67,7 +67,7 @@ final class ShelfPanelController {
             // Let SwiftUI finish sliding the shelf out before reducing the
             // actual window. Resizing both at once makes the glass appear to
             // collapse vertically.
-            ShelfController.shared.isPanelCollapsed = true
+            IttanStore.shelf.send(.setPanelCollapsed(true))
             panel.tabIsVisible = true
             pendingPanelResize = Task { @MainActor [weak self, weak panel, weak screen] in
                 try? await Task.sleep(for: .milliseconds(320))
@@ -81,7 +81,7 @@ final class ShelfPanelController {
             // Restore the full hit area while it is still visually empty,
             // then animate the shelf into that space.
             position(panel, on: screen, animated: false)
-            ShelfController.shared.isPanelCollapsed = false
+            IttanStore.shelf.send(.setPanelCollapsed(false))
             panel.tabIsVisible = false
         }
     }
@@ -118,9 +118,9 @@ final class ShelfPanelController {
             isTemporarilyExpandedForExternalDrag = false
             didAcceptCurrentExternalDrop = false
 
-            guard ShelfController.shared.items.isEmpty else { return }
+            guard IttanStore.shelf.items.isEmpty else { return }
             try? await Task.sleep(for: .milliseconds(170))
-            guard ShelfController.shared.items.isEmpty else { return }
+            guard IttanStore.shelf.items.isEmpty else { return }
             panel?.orderOut(nil)
         }
     }
@@ -166,7 +166,7 @@ final class ShelfPanelController {
     }
 
     private func updateSize(_ panel: NSPanel) {
-        let count = ShelfController.shared.items.count
+        let count = IttanStore.shelf.items.count
         let visibleItems = min(max(count, 1), maximumVisibleItems)
         let height = count == 0
             ? emptyHeight
@@ -213,7 +213,7 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard ShelfController.shared.isPanelCollapsed else {
+        guard IttanStore.shelf.isPanelCollapsed else {
             return super.hitTest(point)
         }
 
@@ -247,27 +247,29 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
     }
 
     @objc private func clearShelf() {
-        ShelfController.shared.clear()
+        IttanStore.shelf.send(.clearButtonTapped)
     }
 
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard PasteboardImporter.canImport(sender.draggingPasteboard) else { return [] }
-        ShelfController.shared.isDropTargeted = true
+        IttanStore.shelf.send(.setDropTargeted(true))
         return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        ShelfController.shared.isDropTargeted = false
+        IttanStore.shelf.send(.setDropTargeted(false))
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
-        ShelfController.shared.isDropTargeted = false
+        IttanStore.shelf.send(.setDropTargeted(false))
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        ShelfController.shared.isDropTargeted = false
-        let imported = PasteboardImporter.importItems(from: sender.draggingPasteboard)
+        IttanStore.shelf.send(.setDropTargeted(false))
+        let imported = PasteboardImporter.importItems(from: sender.draggingPasteboard) { urls in
+            IttanStore.shelf.send(.addURLs(urls))
+        }
         if imported {
             ShelfPanelController.shared.externalDropAccepted()
         }

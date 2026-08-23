@@ -1,44 +1,58 @@
 import AppKit
+import ComposableArchitecture
 import LinkPresentation
 import QuickLookThumbnailing
 import Quartz
 import SwiftUI
+
+private extension SelectionModifiers {
+    init(_ flags: NSEvent.ModifierFlags) {
+        var value: Self = []
+        if flags.contains(.command) { value.insert(.command) }
+        if flags.contains(.shift) { value.insert(.shift) }
+        self = value
+    }
+}
 import UniformTypeIdentifiers
 
 struct ShelfView: View {
-    @State private var shelf = ShelfController.shared
+    let store: StoreOf<ShelfFeature>
     @State private var isTabHovered = false
     @State private var isHistoryPresented = false
     private let shelfWidth: CGFloat = 148
     private let expandedLeadingMargin: CGFloat = 14
+
+    init(store: StoreOf<ShelfFeature> = IttanStore.shelf) {
+        self.store = store
+    }
 
     var body: some View {
         ZStack(alignment: .leading) {
             shelfContent
                 .frame(width: shelfWidth)
                 .offset(
-                    x: shelf.isPanelCollapsed
+                    x: store.isPanelCollapsed
                         ? -(shelfWidth + 78)
                         : expandedLeadingMargin
                 )
 
             collapseTab
-                .offset(x: shelf.isPanelCollapsed ? 0 : -86)
-                .opacity(shelf.isPanelCollapsed ? 1 : 0)
+                .offset(x: store.isPanelCollapsed ? 0 : -86)
+                .opacity(store.isPanelCollapsed ? 1 : 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .animation(.smooth(duration: 0.3, extraBounce: 0), value: shelf.isPanelCollapsed)
+        .animation(.smooth(duration: 0.3, extraBounce: 0), value: store.isPanelCollapsed)
     }
 
     private var shelfContent: some View {
         VStack(spacing: 0) {
-                if shelf.items.isEmpty {
+                if store.items.isEmpty {
                     emptyState
                 } else {
                     ScrollView(.vertical) {
                         LazyVStack(spacing: 8) {
-                            ForEach(shelf.items) { item in
-                                ShelfItemRow(item: item)
+                            ForEach(store.items) { item in
+                                ShelfItemRow(store: store, item: item)
                             }
                         }
                         .padding(.horizontal, 10)
@@ -55,16 +69,16 @@ struct ShelfView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 19, style: .continuous)
                 .strokeBorder(
-                    shelf.isDropTargeted ? Color.accentColor : .primary.opacity(0.12),
-                    lineWidth: shelf.isDropTargeted ? 2 : 1
+                    store.isDropTargeted ? Color.accentColor : .primary.opacity(0.12),
+                    lineWidth: store.isDropTargeted ? 2 : 1
                 )
         }
         .clipShape(.rect(cornerRadius: 19))
         .shadow(color: .black.opacity(0.2), radius: 14, x: 0, y: 7)
         .overlay(alignment: .topLeading) {
-            if !shelf.items.isEmpty {
+            if !store.items.isEmpty {
                 Button {
-                    shelf.clear()
+                    store.send(.clearButtonTapped)
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 10, weight: .semibold))
@@ -75,7 +89,7 @@ struct ShelfView: View {
                 .buttonStyle(.plain)
                 .help("Clear Ittan")
                 .padding(8)
-                .disabled(!shelf.items.contains(where: { !$0.locked }))
+                .disabled(!store.items.contains(where: { !$0.locked }))
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -89,7 +103,7 @@ struct ShelfView: View {
                         .frame(width: 24, height: 24)
                         .glassEffect(.regular.interactive(), in: Circle())
 
-                    if !shelf.history.isEmpty {
+                    if !store.history.isEmpty {
                         Circle()
                             .fill(Color.accentColor)
                             .frame(width: 6, height: 6)
@@ -99,20 +113,16 @@ struct ShelfView: View {
             .buttonStyle(.plain)
             .help("Recently Removed")
             .padding(8)
-            .disabled(shelf.history.isEmpty)
+            .disabled(store.history.isEmpty)
             .popover(isPresented: $isHistoryPresented, arrowEdge: .leading) {
-                HistoryView {
+                HistoryView(store: store) {
                     isHistoryPresented = false
                 }
             }
         }
         .overlay(alignment: .bottomTrailing) {
             Button {
-                guard let url = shelf.createMarkdownNote() else {
-                    NSSound.beep()
-                    return
-                }
-                shelf.openMarkdownNote(url)
+                store.send(.createNoteButtonTapped)
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 10, weight: .semibold))
@@ -170,9 +180,9 @@ struct ShelfView: View {
         HStack(spacing: 8) {
             Image(systemName: "tray.and.arrow.down")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(shelf.isDropTargeted ? Color.accentColor : Color.secondary)
+                .foregroundStyle(store.isDropTargeted ? Color.accentColor : Color.secondary)
 
-            Text(shelf.isDropTargeted ? "Let go to add" : "Drop files here")
+            Text(store.isDropTargeted ? "Let go to add" : "Drop files here")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
         }
@@ -181,12 +191,13 @@ struct ShelfView: View {
 }
 
 private struct ShelfItemRow: View {
+    let store: StoreOf<ShelfFeature>
     let item: ShelfItem
     @State private var isHovered = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            FileDragSource(item: item)
+            FileDragSource(store: store, item: item)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             VStack(spacing: 5) {
@@ -204,7 +215,7 @@ private struct ShelfItemRow: View {
             .allowsHitTesting(false)
 
             Button {
-                ShelfController.shared.remove(id: item.id)
+                store.send(.removeButtonTapped(item.id))
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .semibold))
@@ -235,12 +246,12 @@ private struct ShelfItemRow: View {
         .background {
             RoundedRectangle(cornerRadius: 9)
                 .fill(
-                    ShelfController.shared.selectedIDs.contains(item.id)
+                    store.selectedIDs.contains(item.id)
                         ? Color.primary.opacity(0.09)
                         : (isHovered ? Color.primary.opacity(0.055) : Color.clear)
                 )
                 .overlay {
-                    if ShelfController.shared.selectedIDs.contains(item.id) {
+                    if store.selectedIDs.contains(item.id) {
                         RoundedRectangle(cornerRadius: 9)
                             .strokeBorder(Color.primary.opacity(0.24), lineWidth: 1)
                     }
@@ -354,25 +365,29 @@ private enum LinkPreviewLoader {
 }
 
 private struct FileDragSource: NSViewRepresentable {
+    let store: StoreOf<ShelfFeature>
     let item: ShelfItem
 
     func makeNSView(context: Context) -> FileDragSourceView {
-        FileDragSourceView(item: item)
+        FileDragSourceView(store: store, item: item)
     }
 
     func updateNSView(_ nsView: FileDragSourceView, context: Context) {
+        nsView.store = store
         nsView.item = item
     }
 }
 
 @MainActor
 private final class FileDragSourceView: NSView, NSDraggingSource {
+    var store: StoreOf<ShelfFeature>
     var item: ShelfItem
     private var mouseDownEvent: NSEvent?
     private var draggedItems: [ShelfItem] = []
     private var shouldCollapseSelectionOnClick = false
 
-    init(item: ShelfItem) {
+    init(store: StoreOf<ShelfFeature>, item: ShelfItem) {
+        self.store = store
         self.item = item
         super.init(frame: .zero)
         toolTip = item.path
@@ -389,16 +404,15 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        let controller = ShelfController.shared
         shouldCollapseSelectionOnClick = !event.modifierFlags.contains(.command)
             && !event.modifierFlags.contains(.shift)
-            && controller.selectedIDs.contains(item.id)
-            && controller.selectedIDs.count > 1
+            && store.selectedIDs.contains(item.id)
+            && store.selectedIDs.count > 1
         if !shouldCollapseSelectionOnClick {
-            controller.select(id: item.id, modifiers: event.modifierFlags)
+            store.send(.select(item.id, SelectionModifiers(event.modifierFlags)))
         }
         if event.clickCount == 2 {
-            ShelfController.shared.open(id: item.id)
+            NSWorkspace.shared.open(item.url)
             return
         }
         mouseDownEvent = event
@@ -407,7 +421,7 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
     override func mouseUp(with event: NSEvent) {
         mouseDownEvent = nil
         if shouldCollapseSelectionOnClick {
-            ShelfController.shared.select(id: item.id, modifiers: [])
+            store.send(.select(item.id, []))
         }
         shouldCollapseSelectionOnClick = false
     }
@@ -420,7 +434,9 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         self.mouseDownEvent = nil
         shouldCollapseSelectionOnClick = false
 
-        draggedItems = ShelfController.shared.dragItems(startingWith: item.id)
+        store.send(.prepareDrag(item.id))
+        let draggedIDs = store.selectedIDs.contains(item.id) ? store.selectedIDs : [item.id]
+        draggedItems = store.items.filter { draggedIDs.contains($0.id) && $0.exists }
         let draggingItems = draggedItems.enumerated().map { index, draggedItem in
             let dragItem = NSDraggingItem(pasteboardWriter: ShelfPasteboardWriter.make(for: draggedItem))
             let icon = NSWorkspace.shared.icon(forFile: draggedItem.path)
@@ -441,27 +457,29 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard !(sender.draggingSource is FileDragSourceView) else { return [] }
-        ShelfController.shared.isDropTargeted = true
+        store.send(.setDropTargeted(true))
         return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        ShelfController.shared.isDropTargeted = false
+        store.send(.setDropTargeted(false))
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
-        ShelfController.shared.isDropTargeted = false
+        store.send(.setDropTargeted(false))
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        ShelfController.shared.isDropTargeted = false
+        store.send(.setDropTargeted(false))
         guard !(sender.draggingSource is FileDragSourceView) else { return false }
-        return PasteboardImporter.importItems(from: sender.draggingPasteboard)
+        return PasteboardImporter.importItems(from: sender.draggingPasteboard) { [store] urls in
+            store.send(.addURLs(urls))
+        }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        if !ShelfController.shared.selectedIDs.contains(item.id) {
-            ShelfController.shared.select(id: item.id, modifiers: [])
+        if !store.selectedIDs.contains(item.id) {
+            store.send(.select(item.id, []))
         }
         let menu = NSMenu()
         menu.addItem(item: "Open", action: #selector(openItem))
@@ -502,20 +520,20 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
     ) {
         ApplicationController.shared.setInternalDragActive(false)
         if operation != [] {
-            ShelfController.shared.dragOutSucceeded(ids: draggedItems.map(\.id))
+            store.send(.dragOutSucceeded(draggedItems.map(\.id)))
         }
         draggedItems = []
     }
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "a" {
-            ShelfController.shared.selectAll()
+            store.send(.selectAll)
             return
         }
         super.keyDown(with: event)
     }
 
-    @objc private func openItem() { ShelfController.shared.open(id: item.id) }
+    @objc private func openItem() { NSWorkspace.shared.open(item.url) }
     @objc private func quickLookItem() { IttanQuickLookController.shared.show(item.url) }
     @objc private func shareItem() {
         DispatchQueue.main.async { [weak self] in
@@ -527,14 +545,17 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
             )
         }
     }
-    @objc private func revealItem() { ShelfController.shared.reveal(id: item.id) }
-    @objc private func copyItem() { ShelfController.shared.copyToPasteboard(id: item.id) }
+    @objc private func revealItem() { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
+    @objc private func copyItem() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([ShelfPasteboardWriter.make(for: item)])
+    }
     @objc private func copyPath() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.path, forType: .string)
     }
-    @objc private func toggleLock() { ShelfController.shared.toggleLock(id: item.id) }
-    @objc private func selectAllItems() { ShelfController.shared.selectAll() }
+    @objc private func toggleLock() { store.send(.toggleLock(item.id)) }
+    @objc private func selectAllItems() { store.send(.selectAll) }
     @objc private func renameItem() {
         let alert = NSAlert()
         alert.messageText = "Rename Item"
@@ -545,11 +566,9 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         alert.addButton(withTitle: "Rename")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        if !ShelfController.shared.rename(id: item.id, to: field.stringValue) {
-            NSSound.beep()
-        }
+        store.send(.renameRequested(item.id, field.stringValue))
     }
-    @objc private func removeItem() { ShelfController.shared.remove(id: item.id) }
+    @objc private func removeItem() { store.send(.removeButtonTapped(item.id)) }
 
     private func addOpenWithMenu(to menu: NSMenu) {
         let applications = NSWorkspace.shared.urlsForApplications(toOpen: item.url)
@@ -582,6 +601,7 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
     }
 }
 
+@MainActor
 private final class IttanQuickLookController: NSObject, QLPreviewPanelDataSource {
     static let shared = IttanQuickLookController()
     private var urls: [URL] = []
@@ -602,7 +622,7 @@ private final class IttanQuickLookController: NSObject, QLPreviewPanelDataSource
 }
 
 private struct HistoryView: View {
-    @State private var shelf = ShelfController.shared
+    let store: StoreOf<ShelfFeature>
     let onBecameEmpty: () -> Void
 
     var body: some View {
@@ -611,24 +631,24 @@ private struct HistoryView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Recently Removed")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("\(shelf.history.count) items")
+                    Text("\(store.history.count) items")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Clear") {
-                    closeThen { shelf.clearHistory() }
+                    closeThen { store.send(.clearHistoryButtonTapped) }
                 }
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .disabled(shelf.history.isEmpty)
+                    .disabled(store.history.isEmpty)
             }
             .padding(14)
 
             Divider()
 
-            if shelf.history.isEmpty {
+            if store.history.isEmpty {
                 VStack(spacing: 9) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 28, weight: .regular))
@@ -642,7 +662,7 @@ private struct HistoryView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 6) {
-                        ForEach(shelf.history) { item in
+                        ForEach(store.history) { item in
                             HStack(spacing: 10) {
                                 ShelfThumbnail(url: item.url)
                                     .frame(width: 38, height: 38)
@@ -661,12 +681,12 @@ private struct HistoryView: View {
                                 Spacer(minLength: 6)
 
                                 Button("Restore") {
-                                    if shelf.history.count == 1 {
+                                    if store.history.count == 1 {
                                         closeThen {
-                                            shelf.restoreFromHistory(id: item.id)
+                                            store.send(.restoreFromHistory(item.id))
                                         }
                                     } else {
-                                        shelf.restoreFromHistory(id: item.id)
+                                        store.send(.restoreFromHistory(item.id))
                                     }
                                 }
                                 .buttonStyle(.bordered)
@@ -684,7 +704,7 @@ private struct HistoryView: View {
         }
         .frame(width: 300, height: 390)
         .background(.ultraThinMaterial)
-        .onChange(of: shelf.history.isEmpty) { _, isEmpty in
+        .onChange(of: store.history.isEmpty) { _, isEmpty in
             if isEmpty { onBecameEmpty() }
         }
     }
