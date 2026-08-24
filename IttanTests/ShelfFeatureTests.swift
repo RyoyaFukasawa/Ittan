@@ -60,6 +60,23 @@ struct ShelfFeatureTests {
         #expect(store.state.items == [locked])
     }
 
+    @Test("Toggle all locks locks mixed items and then unlocks them")
+    func togglesAllLocks() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        var locked = ShelfItem(url: try fixture.makeFile("already-locked.txt"))
+        locked.isLocked = true
+        let unlocked = ShelfItem(url: try fixture.makeFile("unlocked.txt"))
+        let store = fixture.testStore(items: [locked, unlocked])
+        store.exhaustivity = .off
+
+        await store.send(.toggleAllLocks)
+        #expect(!store.state.items.contains { !$0.locked })
+
+        await store.send(.toggleAllLocks)
+        #expect(store.state.items.allSatisfy { !$0.locked })
+    }
+
     @Test("Renaming updates both the file and shelf reference")
     func renamesItem() async throws {
         let fixture = try FeatureFixture()

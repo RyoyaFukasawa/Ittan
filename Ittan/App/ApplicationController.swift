@@ -7,6 +7,7 @@ final class ApplicationController: NSObject {
 
     private var dragMonitor: DragMonitor?
     private var preferencesObserver: NSObjectProtocol?
+    private var settingsRequestObserver: NSObjectProtocol?
 
     private override init() {
         super.init()
@@ -22,6 +23,13 @@ final class ApplicationController: NSObject {
                 ShelfPanelController.shared.preferencesDidChange()
                 IttanStore.shelf.send(.historyLimitChanged(IttanPreferences.historyLimit))
             }
+        }
+        settingsRequestObserver = NotificationCenter.default.addObserver(
+            forName: .showIttanSettingsRequested,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in SettingsWindowController.show() }
         }
 
         observe { [weak self] in
@@ -58,6 +66,10 @@ final class ApplicationController: NSObject {
         if let preferencesObserver {
             NotificationCenter.default.removeObserver(preferencesObserver)
             self.preferencesObserver = nil
+        }
+        if let settingsRequestObserver {
+            NotificationCenter.default.removeObserver(settingsRequestObserver)
+            self.settingsRequestObserver = nil
         }
     }
 

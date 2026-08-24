@@ -44,6 +44,10 @@ struct BehaviorSettingsPane: View {
                     }
                 }
             }
+
+            Section("Customize the Shelf") {
+                CornerControlsEditor()
+            }
         }
         .settingsFormStyle()
         .onChange(of: shelfSideRaw) { _, _ in
@@ -53,4 +57,5 @@ struct BehaviorSettingsPane: View {
             NotificationCenter.default.post(name: .ittanPreferencesDidChange, object: nil)
         }
     }
+
 }

@@ -20,6 +20,14 @@ struct ShelfView: View {
     @State private var isTabHovered = false
     @State private var isHistoryPresented = false
     @AppStorage(IttanPreferences.shelfSideKey) private var shelfSideRaw = ShelfSide.left.rawValue
+    @AppStorage(IttanPreferences.topLeadingCornerActionKey)
+    private var topLeadingActionRaw = IttanPreferences.defaultTopLeadingCornerAction.rawValue
+    @AppStorage(IttanPreferences.topTrailingCornerActionKey)
+    private var topTrailingActionRaw = IttanPreferences.defaultTopTrailingCornerAction.rawValue
+    @AppStorage(IttanPreferences.bottomLeadingCornerActionKey)
+    private var bottomLeadingActionRaw = IttanPreferences.defaultBottomLeadingCornerAction.rawValue
+    @AppStorage(IttanPreferences.bottomTrailingCornerActionKey)
+    private var bottomTrailingActionRaw = IttanPreferences.defaultBottomTrailingCornerAction.rawValue
     private let shelfWidth: CGFloat = 148
     private let collapsedPanelHeight: CGFloat = 80
     private let undoToastHeight: CGFloat = 41
@@ -28,6 +36,22 @@ struct ShelfView: View {
     private var edgeAlignment: Alignment { shelfSide == .left ? .leading : .trailing }
     private var edgeSign: CGFloat { shelfSide == .left ? -1 : 1 }
     private var shelfEdge: Edge { shelfSide == .left ? .leading : .trailing }
+    private var topLeadingAction: ShelfCornerAction {
+        ShelfCornerAction(rawValue: topLeadingActionRaw)
+            ?? IttanPreferences.defaultTopLeadingCornerAction
+    }
+    private var topTrailingAction: ShelfCornerAction {
+        ShelfCornerAction(rawValue: topTrailingActionRaw)
+            ?? IttanPreferences.defaultTopTrailingCornerAction
+    }
+    private var bottomLeadingAction: ShelfCornerAction {
+        ShelfCornerAction(rawValue: bottomLeadingActionRaw)
+            ?? IttanPreferences.defaultBottomLeadingCornerAction
+    }
+    private var bottomTrailingAction: ShelfCornerAction {
+        ShelfCornerAction(rawValue: bottomTrailingActionRaw)
+            ?? IttanPreferences.defaultBottomTrailingCornerAction
+    }
     private var tabShape: UnevenRoundedRectangle {
         let radius: CGFloat = 14
         return UnevenRoundedRectangle(
@@ -126,69 +150,132 @@ struct ShelfView: View {
         .shadow(color: .black.opacity(0.2), radius: 14, x: 0, y: 7)
         .overlay(alignment: .topLeading) {
             CornerControlsLayout(.topLeading) {
-                if !store.items.isEmpty {
-                    Button {
-                        store.send(.clearButtonTapped)
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, height: 24)
-                            .glassEffect(.regular.interactive(), in: Circle())
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear Ittan")
-                    .disabled(!store.items.contains(where: { !$0.locked }))
-                }
+                cornerControl(topLeadingAction)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            CornerControlsLayout(.topTrailing) {
+                cornerControl(topTrailingAction)
             }
         }
         .overlay(alignment: .bottomLeading) {
             CornerControlsLayout(.bottomLeading) {
-                Button {
-                    isHistoryPresented.toggle()
-                } label: {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, height: 24)
-                            .glassEffect(.regular.interactive(), in: Circle())
-
-                        if !store.history.isEmpty {
-                            Circle()
-                                .fill(Color.accentColor)
-                                .frame(width: 6, height: 6)
-                        }
-                    }
-                    .frame(width: 24, height: 24)
-                    .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Recently Removed")
-                .disabled(store.history.isEmpty)
-                .popover(isPresented: $isHistoryPresented, arrowEdge: shelfEdge) {
-                    HistoryView(store: store) {
-                        isHistoryPresented = false
-                    }
-                }
+                cornerControl(bottomLeadingAction)
             }
         }
         .overlay(alignment: .bottomTrailing) {
             CornerControlsLayout(.bottomTrailing) {
-                Button {
-                    store.send(.createNoteButtonTapped)
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .glassEffect(.regular.interactive(), in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("New Markdown Note")
+                cornerControl(bottomTrailingAction)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func cornerControl(_ action: ShelfCornerAction) -> some View {
+        switch action {
+        case .none:
+            EmptyView()
+
+        case .addFiles:
+            cornerButton(action, perform: addFiles)
+
+        case .paste:
+            cornerButton(action, perform: pasteFromClipboard)
+
+        case .selectAll:
+            cornerButton(action) {
+                store.send(.selectAll)
+            }
+            .disabled(store.items.isEmpty)
+
+        case .lockAll:
+            cornerButton(
+                action,
+                systemImage: !store.items.isEmpty && store.items.allSatisfy(\.locked)
+                    ? "lock.open"
+                    : "lock"
+            ) {
+                store.send(.toggleAllLocks)
+            }
+            .disabled(store.items.isEmpty)
+
+        case .clearShelf:
+            if !store.items.isEmpty {
+                cornerButton(action) {
+                    store.send(.clearButtonTapped)
+                }
+                .disabled(!store.items.contains(where: { !$0.locked }))
+            }
+
+        case .recentlyRemoved:
+            cornerButton(action, showsActivity: !store.history.isEmpty) {
+                isHistoryPresented.toggle()
+            }
+            .disabled(store.history.isEmpty)
+            .popover(isPresented: $isHistoryPresented, arrowEdge: shelfEdge) {
+                HistoryView(store: store) {
+                    isHistoryPresented = false
+                }
+            }
+
+        case .quickNote:
+            cornerButton(action) {
+                store.send(.createNoteButtonTapped)
+            }
+
+        case .settings:
+            cornerButton(action) {
+                NotificationCenter.default.post(name: .showIttanSettingsRequested, object: nil)
+            }
+
+        case .collapseShelf:
+            cornerButton(action) {
+                ShelfPanelController.shared.toggleCollapsed()
+            }
+        }
+    }
+
+    private func cornerButton(
+        _ action: ShelfCornerAction,
+        systemImage: String? = nil,
+        showsActivity: Bool = false,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: systemImage ?? action.systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .glassEffect(.regular.interactive(), in: Circle())
+
+                if showsActivity {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(width: 24, height: 24)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(action.title)
+    }
+
+    private func addFiles() {
+        let panel = NSOpenPanel()
+        panel.title = "Add to Ittan"
+        panel.prompt = "Add"
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        guard panel.runModal() == .OK else { return }
+        store.send(.addURLs(panel.urls))
+    }
+
+    private func pasteFromClipboard() {
+        _ = PasteboardImporter.importItems(from: .general) { [store] urls in
+            store.send(.addURLs(urls))
         }
     }
 

@@ -4,4 +4,13 @@ enum ToggleShelfItemLock {
         items[index].isLocked = !items[index].locked
         return true
     }
+
+    static func applyToAll(_ items: inout [ShelfItem]) -> Bool {
+        guard !items.isEmpty else { return false }
+        let locksItems = items.contains { !$0.locked }
+        for index in items.indices {
+            items[index].isLocked = locksItems
+        }
+        return true
+    }
 }

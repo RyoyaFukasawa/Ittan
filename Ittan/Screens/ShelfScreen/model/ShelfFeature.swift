@@ -46,6 +46,7 @@ struct ShelfFeature {
         case setDropTargeted(Bool)
         case setPanelCollapsed(Bool)
         case toggleLock(ShelfItem.ID)
+        case toggleAllLocks
         case undoButtonTapped
         case undoExpired(UUID)
     }
@@ -232,6 +233,11 @@ struct ShelfFeature {
 
             case let .toggleLock(id):
                 guard ToggleShelfItemLock.apply(id: id, to: &state.items) else { return .none }
+                persistItems(state.items)
+                return .none
+
+            case .toggleAllLocks:
+                guard ToggleShelfItemLock.applyToAll(&state.items) else { return beep() }
                 persistItems(state.items)
                 return .none
 
