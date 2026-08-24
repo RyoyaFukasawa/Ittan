@@ -231,6 +231,7 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
     private var autoScrollVelocity: CGFloat = 0
     private var lastInternalDragPoint: NSPoint?
     private var lastInternalDragIDs: [ShelfItem.ID] = []
+    private var lastDragIsExternal = false
 
     required init(rootView: ShelfView) {
         super.init(rootView: rootView)
@@ -291,17 +292,27 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
         }
         guard PasteboardImporter.canImport(sender.draggingPasteboard) else { return [] }
         IttanStore.shelf.send(.setDropTargeted(true))
+        lastDragIsExternal = true
+        lastInternalDragPoint = sender.draggingLocation
+        updateExternalDropPreview(at: sender.draggingLocation)
         return .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let source = sender.draggingSource as? FileDragSourceView else { return .copy }
         let windowPoint = sender.draggingLocation
         lastInternalDragPoint = windowPoint
-        lastInternalDragIDs = source.draggedIDs
         updateAutoScrollState(at: windowPoint)
-        updateReorderPreview(at: windowPoint, draggedIDs: source.draggedIDs)
-        return .move
+        if let source = sender.draggingSource as? FileDragSourceView {
+            lastDragIsExternal = false
+            lastInternalDragIDs = source.draggedIDs
+            updateReorderPreview(at: windowPoint, draggedIDs: source.draggedIDs)
+            return .move
+        }
+        guard PasteboardImporter.canImport(sender.draggingPasteboard) else { return [] }
+        lastDragIsExternal = true
+        lastInternalDragIDs = []
+        updateExternalDropPreview(at: windowPoint)
+        return .copy
     }
 
     private func updateReorderPreview(at windowPoint: NSPoint, draggedIDs: [ShelfItem.ID]) {
@@ -315,6 +326,20 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
             )
         } else {
             IttanStore.shelf.send(.previewReorder(draggedIDs, relativeTo: nil, .before))
+        }
+    }
+
+    private func updateExternalDropPreview(at windowPoint: NSPoint) {
+        if let target = closestItemView(to: windowPoint, excluding: []) {
+            let point = target.convert(windowPoint, from: nil)
+            let placement: ShelfItemDropPlacement = point.y >= target.bounds.midY
+                ? .before
+                : .after
+            IttanStore.shelf.send(
+                .previewExternalDrop(relativeTo: target.item.id, placement)
+            )
+        } else {
+            IttanStore.shelf.send(.previewExternalDrop(relativeTo: nil, .before))
         }
     }
 
@@ -397,8 +422,12 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
         }
         clipView.scroll(to: NSPoint(x: visibleBounds.origin.x, y: destinationY))
         scrollView.reflectScrolledClipView(clipView)
-        if let point = lastInternalDragPoint, !lastInternalDragIDs.isEmpty {
-            updateReorderPreview(at: point, draggedIDs: lastInternalDragIDs)
+        if let point = lastInternalDragPoint {
+            if lastDragIsExternal {
+                updateExternalDropPreview(at: point)
+            } else if !lastInternalDragIDs.isEmpty {
+                updateReorderPreview(at: point, draggedIDs: lastInternalDragIDs)
+            }
         }
     }
 
@@ -439,11 +468,17 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
     override func draggingExited(_ sender: NSDraggingInfo?) {
         stopAutoScroll()
         IttanStore.shelf.send(.setDropTargeted(false))
+        if sender?.draggingSource is FileDragSourceView {
+            IttanStore.shelf.send(.cancelReorder)
+        } else {
+            IttanStore.shelf.send(.cancelExternalDropPreview)
+        }
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
         stopAutoScroll()
         IttanStore.shelf.send(.setDropTargeted(false))
+        IttanStore.shelf.send(.cancelExternalDropPreview)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -453,8 +488,11 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
             IttanStore.shelf.send(.commitReorder)
             return true
         }
+        let insertionIndex = IttanStore.shelf.externalDropInsertionIndex
+            ?? IttanStore.shelf.items.endIndex
+        IttanStore.shelf.send(.cancelExternalDropPreview)
         let imported = PasteboardImporter.importItems(from: sender.draggingPasteboard) { urls in
-            IttanStore.shelf.send(.addURLs(urls))
+            IttanStore.shelf.send(.addURLsAt(urls, insertionIndex))
         }
         if imported {
             ShelfPanelController.shared.externalDropAccepted()

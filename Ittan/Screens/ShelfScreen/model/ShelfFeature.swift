@@ -25,6 +25,7 @@ struct ShelfFeature {
         var isDropTargeted = false
         var isPanelCollapsed = false
         var reorderPreview: ReorderPreview?
+        var externalDropInsertionIndex: Int?
 
         init(items: [ShelfItem] = [], history: [ShelfItem] = []) {
             self.items = items
@@ -39,6 +40,8 @@ struct ShelfFeature {
 
     enum Action: Equatable {
         case addURLs([URL])
+        case addURLsAt([URL], Int)
+        case cancelExternalDropPreview
         case cancelReorder
         case clearButtonTapped
         case clearHistoryButtonTapped
@@ -49,6 +52,7 @@ struct ShelfFeature {
         case historyLimitChanged(Int)
         case refreshFileLocations
         case previewReorder([ShelfItem.ID], relativeTo: ShelfItem.ID?, ShelfItemDropPlacement)
+        case previewExternalDrop(relativeTo: ShelfItem.ID?, ShelfItemDropPlacement)
         case prepareDrag(ShelfItem.ID)
         case redoButtonTapped
         case removeSelected
@@ -81,6 +85,21 @@ struct ShelfFeature {
                     return .none
                 }
                 persistItems(state.items)
+                return .none
+
+            case let .addURLsAt(urls, insertionIndex):
+                state.externalDropInsertionIndex = nil
+                guard AddShelfItems.apply(
+                    urls,
+                    to: &state.items,
+                    at: insertionIndex,
+                    fileExists: storage.fileExists
+                ) else { return .none }
+                persistItems(state.items)
+                return .none
+
+            case .cancelExternalDropPreview:
+                state.externalDropInsertionIndex = nil
                 return .none
 
             case .cancelReorder:
@@ -177,6 +196,17 @@ struct ShelfFeature {
                     itemIDs: orderedIDs,
                     insertionIndex: insertionIndex
                 )
+                return .none
+
+            case let .previewExternalDrop(targetID, placement):
+                if let targetID,
+                   let targetIndex = state.items.firstIndex(where: { $0.id == targetID }) {
+                    state.externalDropInsertionIndex = placement == .before
+                        ? targetIndex
+                        : targetIndex + 1
+                } else {
+                    state.externalDropInsertionIndex = state.items.endIndex
+                }
                 return .none
 
             case let .prepareDrag(id):

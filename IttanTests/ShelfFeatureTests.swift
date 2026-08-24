@@ -22,6 +22,44 @@ struct ShelfFeatureTests {
         #expect(store.state.items.first?.path == ShelfItem.normalizedPath(for: first))
     }
 
+    @Test("External drop inserts files at the previewed position")
+    func insertsExternalDropAtPosition() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let existing = try ["one.txt", "two.txt", "three.txt"].map {
+            ShelfItem(url: try fixture.makeFile($0))
+        }
+        let dropped = try fixture.makeFile("dropped.txt")
+        let store = fixture.testStore(items: existing)
+        store.exhaustivity = .off
+
+        await store.send(.previewExternalDrop(relativeTo: existing[1].id, .before))
+        #expect(store.state.externalDropInsertionIndex == 1)
+        await store.send(.addURLsAt([dropped], 1))
+
+        #expect(store.state.items.map(\.displayName) == [
+            "one.txt", "dropped.txt", "two.txt", "three.txt"
+        ])
+        #expect(store.state.externalDropInsertionIndex == nil)
+    }
+
+    @Test("External drop preserves the order of multiple files")
+    func insertsMultipleExternalFilesInOrder() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let existing = ShelfItem(url: try fixture.makeFile("existing.txt"))
+        let first = try fixture.makeFile("first.txt")
+        let second = try fixture.makeFile("second.txt")
+        let store = fixture.testStore(items: [existing])
+        store.exhaustivity = .off
+
+        await store.send(.addURLsAt([first, second], 1))
+
+        #expect(store.state.items.map(\.displayName) == [
+            "existing.txt", "first.txt", "second.txt"
+        ])
+    }
+
     @Test("A successful drag removes only the shelf reference and Undo restores it")
     func dragAndUndo() async throws {
         let fixture = try FeatureFixture()

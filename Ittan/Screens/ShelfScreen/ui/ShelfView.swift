@@ -117,19 +117,26 @@ struct ShelfView: View {
                 } else {
                     ScrollView(.vertical) {
                         LazyVStack(spacing: 8) {
-                            ForEach(presentedShelfItems) { item in
-                                ShelfItemRow(store: store, item: item)
-                                    .opacity(reorderingItemIDs.contains(item.id) ? 0 : 1)
+                            ForEach(shelfRows) { row in
+                                switch row {
+                                case let .item(item):
+                                    ShelfItemRow(store: store, item: item)
+                                        .opacity(reorderingItemIDs.contains(item.id) ? 0 : 1)
                                     .transition(
                                         .opacity.combined(with: .scale(scale: 0.96))
                                     )
+                                case .externalDropGap:
+                                    Color.clear
+                                        .frame(width: 100, height: 24)
+                                        .accessibilityHidden(true)
+                                }
                             }
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 36)
                         .animation(
                             .smooth(duration: 0.26, extraBounce: 0),
-                            value: presentedShelfItems.map(\.id)
+                            value: shelfRows.map(\.id)
                         )
                     }
                     .scrollIndicators(.hidden)
@@ -185,6 +192,17 @@ struct ShelfView: View {
 
     private var reorderingItemIDs: Set<ShelfItem.ID> {
         Set(store.reorderPreview?.itemIDs ?? [])
+    }
+
+    private var shelfRows: [ShelfRowPresentation] {
+        var rows = presentedShelfItems.map(ShelfRowPresentation.item)
+        if store.reorderPreview == nil, let insertionIndex = store.externalDropInsertionIndex {
+            rows.insert(
+                .externalDropGap,
+                at: min(max(0, insertionIndex), rows.endIndex)
+            )
+        }
+        return rows
     }
 
     @ViewBuilder
@@ -351,6 +369,18 @@ private enum ShelfItemLayout {
     static let thumbnailCornerRadius: CGFloat = 7
     static let contentPadding: CGFloat = 6
     static let containerCornerRadius = thumbnailCornerRadius + contentPadding
+}
+
+private enum ShelfRowPresentation: Identifiable {
+    case item(ShelfItem)
+    case externalDropGap
+
+    var id: String {
+        switch self {
+        case let .item(item): item.id.uuidString
+        case .externalDropGap: "external-drop-gap"
+        }
+    }
 }
 
 private struct ShelfItemRow: View {
@@ -565,7 +595,6 @@ final class FileDragSourceView: NSView, NSDraggingSource {
         self.item = item
         super.init(frame: .zero)
         toolTip = item.path
-        registerForDraggedTypes(PasteboardImporter.acceptedTypes)
     }
 
     required init?(coder: NSCoder) {
@@ -668,42 +697,6 @@ final class FileDragSourceView: NSView, NSDraggingSource {
                 hints: [.interpolation: NSImageInterpolation.high]
             )
             return true
-        }
-    }
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if sender.draggingSource is FileDragSourceView {
-            store.send(.setDropTargeted(false))
-            return .move
-        }
-        store.send(.setDropTargeted(true))
-        return .copy
-    }
-
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let source = sender.draggingSource as? FileDragSourceView else { return .copy }
-        let location = convert(sender.draggingLocation, from: nil)
-        let placement: ShelfItemDropPlacement = location.y >= bounds.midY ? .before : .after
-        store.send(.previewReorder(source.draggedIDs, relativeTo: item.id, placement))
-        return .move
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) {
-        store.send(.setDropTargeted(false))
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        store.send(.setDropTargeted(false))
-    }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        store.send(.setDropTargeted(false))
-        if sender.draggingSource is FileDragSourceView {
-            store.send(.commitReorder)
-            return true
-        }
-        return PasteboardImporter.importItems(from: sender.draggingPasteboard) { [store] urls in
-            store.send(.addURLs(urls))
         }
     }
 
