@@ -4,6 +4,12 @@ Ittan is a native macOS file shelf. Start dragging a file or folder and Ittan
 appears on the active display. Park items there, switch to the destination,
 then drag them back out.
 
+<p>
+  <a href="https://github.com/RyoyaFukasawa/Ittan/releases/latest/download/Ittan.zip">
+    <img src="download-button.svg" alt="Download the latest version of Ittan" width="220">
+  </a>
+</p>
+
 ## Status
 
 Ittan is an early macOS 26 prototype. It currently supports:
@@ -24,6 +30,13 @@ Ittan is local-only. It has no account, analytics, cloud sync, or network calls.
 - Xcode 26 or newer
 
 ## Install
+
+### Download
+
+Download the latest notarized `Ittan.zip` using the button above, extract it,
+and move **Ittan** to the Applications folder.
+
+### Homebrew
 
 Install the latest notarized release with Homebrew:
 
