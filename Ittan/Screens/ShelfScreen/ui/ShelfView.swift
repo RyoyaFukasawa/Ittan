@@ -19,40 +19,71 @@ struct ShelfView: View {
     let store: StoreOf<ShelfFeature>
     @State private var isTabHovered = false
     @State private var isHistoryPresented = false
+    @AppStorage(IttanPreferences.shelfSideKey) private var shelfSideRaw = ShelfSide.left.rawValue
     private let shelfWidth: CGFloat = 148
-    private let expandedLeadingMargin: CGFloat = 14
+    private let collapsedPanelHeight: CGFloat = 80
+    private let undoToastHeight: CGFloat = 41
+
+    private var shelfSide: ShelfSide { ShelfSide(rawValue: shelfSideRaw) ?? .left }
+    private var edgeAlignment: Alignment { shelfSide == .left ? .leading : .trailing }
+    private var edgeSign: CGFloat { shelfSide == .left ? -1 : 1 }
+    private var shelfEdge: Edge { shelfSide == .left ? .leading : .trailing }
+    private var tabShape: UnevenRoundedRectangle {
+        let radius: CGFloat = 14
+        return UnevenRoundedRectangle(
+            cornerRadii: RectangleCornerRadii(
+                topLeading: shelfSide == .left ? 0 : radius,
+                bottomLeading: shelfSide == .left ? 0 : radius,
+                bottomTrailing: shelfSide == .left ? radius : 0,
+                topTrailing: shelfSide == .left ? radius : 0
+            ),
+            style: .continuous
+        )
+    }
 
     init(store: StoreOf<ShelfFeature> = IttanStore.shelf) {
         self.store = store
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            VStack(spacing: 7) {
-                shelfContent
+        GeometryReader { geometry in
+            ZStack(alignment: edgeAlignment) {
+                VStack(spacing: 7) {
+                    shelfContent
 
-                if let notice = store.undoNotice {
-                    UndoToastView(notice: notice)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    if let notice = store.undoNotice {
+                        UndoToastView(notice: notice)
+                            .transition(.move(edge: shelfEdge).combined(with: .opacity))
+                    }
                 }
-            }
                 .frame(width: shelfWidth)
                 .offset(
                     x: store.isPanelCollapsed
-                        ? -(shelfWidth + 78)
-                        : expandedLeadingMargin
+                        ? edgeSign * (shelfWidth + 78)
+                        : (shelfSide == .left ? 14 : -14)
                 )
 
-            collapseTab
-                .offset(x: store.isPanelCollapsed ? 0 : -86)
-                .opacity(store.isPanelCollapsed ? 1 : 0)
+                collapseTab
+                    .offset(
+                        x: store.isPanelCollapsed ? 0 : edgeSign * 86,
+                        y: collapseTabVerticalOffset(panelHeight: geometry.size.height)
+                    )
+                    .opacity(store.isPanelCollapsed ? 1 : 0)
+                    .animation(nil, value: store.undoNotice?.id)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edgeAlignment)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .animation(.smooth(duration: 0.3, extraBounce: 0), value: store.isPanelCollapsed)
         .animation(.smooth(duration: 0.26, extraBounce: 0), value: store.undoNotice?.id)
         .task {
             await store.send(.fileMonitoringStarted).finish()
         }
+    }
+
+    private func collapseTabVerticalOffset(panelHeight: CGFloat) -> CGFloat {
+        guard store.undoNotice != nil,
+              panelHeight > collapsedPanelHeight + 1 else { return 0 }
+        return -undoToastHeight / 2
     }
 
     private var shelfContent: some View {
@@ -94,63 +125,70 @@ struct ShelfView: View {
         .clipShape(.rect(cornerRadius: 19))
         .shadow(color: .black.opacity(0.2), radius: 14, x: 0, y: 7)
         .overlay(alignment: .topLeading) {
-            if !store.items.isEmpty {
-                Button {
-                    store.send(.clearButtonTapped)
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .glassEffect(.regular.interactive(), in: Circle())
+            CornerControlsLayout(.topLeading) {
+                if !store.items.isEmpty {
+                    Button {
+                        store.send(.clearButtonTapped)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                            .glassEffect(.regular.interactive(), in: Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear Ittan")
+                    .disabled(!store.items.contains(where: { !$0.locked }))
                 }
-                .buttonStyle(.plain)
-                .help("Clear Ittan")
-                .padding(8)
-                .disabled(!store.items.contains(where: { !$0.locked }))
             }
         }
         .overlay(alignment: .bottomLeading) {
-            Button {
-                isHistoryPresented.toggle()
-            } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .glassEffect(.regular.interactive(), in: Circle())
+            CornerControlsLayout(.bottomLeading) {
+                Button {
+                    isHistoryPresented.toggle()
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                            .glassEffect(.regular.interactive(), in: Circle())
 
-                    if !store.history.isEmpty {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 6, height: 6)
+                        if !store.history.isEmpty {
+                            Circle()
+                                .fill(Color.accentColor)
+                                .frame(width: 6, height: 6)
+                        }
                     }
+                    .frame(width: 24, height: 24)
+                    .contentShape(Circle())
                 }
-            }
-            .buttonStyle(.plain)
-            .help("Recently Removed")
-            .padding(8)
-            .disabled(store.history.isEmpty)
-            .popover(isPresented: $isHistoryPresented, arrowEdge: .leading) {
-                HistoryView(store: store) {
-                    isHistoryPresented = false
+                .buttonStyle(.plain)
+                .help("Recently Removed")
+                .disabled(store.history.isEmpty)
+                .popover(isPresented: $isHistoryPresented, arrowEdge: shelfEdge) {
+                    HistoryView(store: store) {
+                        isHistoryPresented = false
+                    }
                 }
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            Button {
-                store.send(.createNoteButtonTapped)
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-                    .glassEffect(.regular.interactive(), in: Circle())
+            CornerControlsLayout(.bottomTrailing) {
+                Button {
+                    store.send(.createNoteButtonTapped)
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                        .glassEffect(.regular.interactive(), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("New Markdown Note")
             }
-            .buttonStyle(.plain)
-            .help("New Markdown Note")
-            .padding(8)
         }
     }
 
@@ -159,17 +197,17 @@ struct ShelfView: View {
             ShelfPanelController.shared.toggleCollapsed()
         } label: {
             ZStack {
-                Capsule(style: .continuous)
+                tabShape
                     .fill(Color.accentColor.opacity(0.1))
-                    .glassEffect(.regular, in: Capsule(style: .continuous))
+                    .glassEffect(.regular, in: tabShape)
                     .overlay {
-                        Capsule(style: .continuous)
+                        tabShape
                             .strokeBorder(.primary.opacity(0.18), lineWidth: 1)
                     }
                     .shadow(
                         color: Color.accentColor.opacity(0.12),
                         radius: 4,
-                        x: 2,
+                        x: -edgeSign * 2,
                         y: 0
                     )
 
@@ -178,14 +216,11 @@ struct ShelfView: View {
                     .frame(width: 2, height: 24)
             }
             .frame(width: isTabHovered ? 27 : 24, height: 69)
-            .frame(width: 78, height: 80, alignment: .leading)
+            .frame(width: 78, height: 80, alignment: edgeAlignment)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(width: 78, height: 80, alignment: .leading)
-        // Push the square leading edge one point off-screen so the glass
-        // outline does not draw a rectangular seam against the display edge.
-        .offset(x: -8)
+        .frame(width: 78, height: 80, alignment: edgeAlignment)
         .onHover { hovering in
             withAnimation(.smooth(duration: 0.16, extraBounce: 0)) {
                 isTabHovered = hovering
@@ -554,18 +589,43 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         operation: NSDragOperation
     ) {
         ApplicationController.shared.setInternalDragActive(false)
-        if operation != [] {
+        if operation != [], IttanPreferences.removesAfterSuccessfulDrag {
             store.send(.dragOutSucceeded(draggedItems.map(\.id)))
         }
         draggedItems = []
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "a" {
-            store.send(.selectAll)
-            return
+        if event.keyCode == 51 || event.keyCode == 117 {
+            store.send(.removeSelected)
+        } else {
+            super.keyDown(with: event)
         }
-        super.keyDown(with: event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.contains(.command),
+              let key = event.charactersIgnoringModifiers?.lowercased() else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        switch key {
+        case "a":
+            store.send(.selectAll)
+        case "c":
+            copySelectedItems()
+        case "x":
+            cutSelectedItems()
+        case "v":
+            pasteItems()
+        case "z" where event.modifierFlags.contains(.shift):
+            store.send(.redoButtonTapped)
+        case "z":
+            store.send(.undoButtonTapped)
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+        return true
     }
 
     @objc private func openItem() { NSWorkspace.shared.open(item.url) }
@@ -582,8 +642,7 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
     }
     @objc private func revealItem() { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
     @objc private func copyItem() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([ShelfPasteboardWriter.make(for: item)])
+        copySelectedItems()
     }
     @objc private func copyPath() {
         NSPasteboard.general.clearContents()
@@ -604,6 +663,34 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         store.send(.renameRequested(item.id, field.stringValue))
     }
     @objc private func removeItem() { store.send(.removeButtonTapped(item.id)) }
+
+    private func copySelectedItems() {
+        let items = selectedItems.filter(\.exists)
+        guard !items.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(items.map(ShelfPasteboardWriter.make(for:)))
+    }
+
+    private func cutSelectedItems() {
+        let items = selectedItems.filter { $0.exists && !$0.locked }
+        guard !items.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.writeObjects(items.map(ShelfPasteboardWriter.make(for:))) else {
+            return
+        }
+        store.send(.removeSelected)
+    }
+
+    private func pasteItems() {
+        _ = PasteboardImporter.importItems(from: .general) { [store] urls in
+            store.send(.addURLs(urls))
+        }
+    }
+
+    private var selectedItems: [ShelfItem] {
+        let ids = store.selectedIDs.contains(item.id) ? store.selectedIDs : [item.id]
+        return store.items.filter { ids.contains($0.id) }
+    }
 
     private func addOpenWithMenu(to menu: NSMenu) {
         let applications = NSWorkspace.shared.urlsForApplications(toOpen: item.url)

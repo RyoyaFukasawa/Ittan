@@ -73,7 +73,8 @@ struct ShelfStore: @unchecked Sendable {
                     isLocked: item.isLocked
                 )
         }
-        let available = upgraded.filter { fileManager.fileExists(atPath: $0.path) }
+        let existing = upgraded.filter { fileManager.fileExists(atPath: $0.path) }
+        let available = Array(existing.prefix(IttanPreferences.historyLimit))
         if upgraded != decoded || available.count != upgraded.count {
             try? saveHistory(available)
         }

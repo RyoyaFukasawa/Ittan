@@ -27,12 +27,13 @@ enum RemoveShelfItems {
         history: inout [ShelfItem],
         lastRemovedBatch: inout [ShelfItem],
         undoNotice: inout UndoNotice?,
-        noticeID: UUID
+        noticeID: UUID,
+        historyLimit: Int
     ) {
         history.removeAll { old in removed.contains(where: { $0.path == old.path }) }
         history.insert(contentsOf: removed, at: 0)
-        if history.count > 50 {
-            history.removeLast(history.count - 50)
+        if history.count > historyLimit {
+            history.removeLast(history.count - historyLimit)
         }
         lastRemovedBatch = removed
         undoNotice = UndoNotice(

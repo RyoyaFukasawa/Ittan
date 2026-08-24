@@ -125,6 +125,50 @@ struct ShelfFeatureTests {
         #expect(store.state.history.isEmpty)
         #expect(store.state.undoNotice == nil)
     }
+
+    @Test("Undo remains available after its toast expires and supports redo")
+    func undoAfterToastAndRedo() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let item = ShelfItem(url: try fixture.makeFile("undo-redo.txt"))
+        let store = fixture.testStore(items: [item])
+        store.exhaustivity = .off
+
+        await store.send(.removeButtonTapped(item.id))
+        let noticeID = try #require(store.state.undoNotice?.id)
+        await store.send(.undoExpired(noticeID))
+        #expect(store.state.undoNotice == nil)
+
+        await store.send(.undoButtonTapped)
+        #expect(store.state.items == [item])
+
+        await store.send(.redoButtonTapped)
+        #expect(store.state.items.isEmpty)
+        #expect(store.state.history == [item])
+    }
+
+    @Test("Removing a selection keeps locked items on the shelf")
+    func removesUnlockedSelection() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        var locked = ShelfItem(url: try fixture.makeFile("locked-selection.txt"))
+        locked.isLocked = true
+        let removable = ShelfItem(url: try fixture.makeFile("removable-selection.txt"))
+        var state = ShelfFeature.State(items: [locked, removable])
+        state.selectedIDs = [locked.id, removable.id]
+        let store = TestStore(initialState: state) {
+            ShelfFeature()
+        } withDependencies: {
+            $0.shelfStorage = fixture.storage
+            $0.continuousClock = TestClock()
+            $0.uuid = .incrementing
+        }
+        store.exhaustivity = .off
+
+        await store.send(.removeSelected)
+
+        #expect(store.state.items == [locked])
+    }
 }
 
 private struct FeatureFixture {

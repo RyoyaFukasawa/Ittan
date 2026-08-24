@@ -7,9 +7,8 @@ struct NoteClient: Sendable {
 
 extension NoteClient: DependencyKey {
     static let liveValue = NoteClient { url in
-        let editorURL = NoteEditorPreference.applicationURL
-        guard FileManager.default.fileExists(atPath: editorURL.path) else {
-            NSLog("Ittan: note editor is not available at \(editorURL.path)")
+        guard let editorURL = NSWorkspace.shared.urlForApplication(toOpen: url) else {
+            NSLog("Ittan: no default application is available for Markdown files")
             NSSound.beep()
             return
         }

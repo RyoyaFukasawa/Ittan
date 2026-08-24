@@ -10,6 +10,7 @@ struct ShelfFeature {
         var selectedIDs: Set<ShelfItem.ID> = []
         var selectionAnchor: ShelfItem.ID?
         var lastRemovedBatch: [ShelfItem] = []
+        var redoBatch: [ShelfItem] = []
         var undoNotice: UndoNotice?
         var isDropTargeted = false
         var isPanelCollapsed = false
@@ -32,8 +33,11 @@ struct ShelfFeature {
         case createNoteButtonTapped
         case dragOutSucceeded([ShelfItem.ID])
         case fileMonitoringStarted
+        case historyLimitChanged(Int)
         case refreshFileLocations
         case prepareDrag(ShelfItem.ID)
+        case redoButtonTapped
+        case removeSelected
         case removeButtonTapped(ShelfItem.ID)
         case renameRequested(ShelfItem.ID, String)
         case restoreFromHistory(ShelfItem.ID)
@@ -79,6 +83,7 @@ struct ShelfFeature {
             case .clearHistoryButtonTapped:
                 state.history.removeAll()
                 state.lastRemovedBatch = []
+                state.redoBatch = []
                 state.undoNotice = nil
                 persistHistory(state.history)
                 return .cancel(id: CancelID.undoNotice)
@@ -111,6 +116,12 @@ struct ShelfFeature {
                     }
                 }
 
+            case let .historyLimitChanged(limit):
+                guard limit > 0, state.history.count > limit else { return .none }
+                state.history.removeLast(state.history.count - limit)
+                persistHistory(state.history)
+                return .none
+
             case .refreshFileLocations:
                 let refreshed = state.items.map { $0.refreshingLocation() }
                 guard refreshed != state.items else { return .none }
@@ -124,6 +135,28 @@ struct ShelfFeature {
                     state.selectionAnchor = id
                 }
                 return .none
+
+            case .redoButtonTapped:
+                let redoIDs = Set(state.redoBatch.map(\.id))
+                let removableIDs = Set(
+                    state.items
+                        .filter { redoIDs.contains($0.id) && !$0.locked }
+                        .map(\.id)
+                )
+                guard !removableIDs.isEmpty else {
+                    state.redoBatch = []
+                    return beep()
+                }
+                return remove(ids: removableIDs, state: &state)
+
+            case .removeSelected:
+                let removableIDs = Set(
+                    state.items
+                        .filter { state.selectedIDs.contains($0.id) && !$0.locked }
+                        .map(\.id)
+                )
+                guard !removableIDs.isEmpty else { return beep() }
+                return remove(ids: removableIDs, state: &state)
 
             case let .removeButtonTapped(id):
                 guard state.items.first(where: { $0.id == id })?.locked != true else {
@@ -209,6 +242,7 @@ struct ShelfFeature {
                 state.lastRemovedBatch = []
                 state.undoNotice = nil
                 guard !restorable.isEmpty else { return .cancel(id: CancelID.undoNotice) }
+                state.redoBatch = restorable
                 let restoredIDs = Set(restorable.map(\.id))
                 state.history.removeAll { restoredIDs.contains($0.id) }
                 state.items.insert(contentsOf: restorable, at: 0)
@@ -219,7 +253,6 @@ struct ShelfFeature {
             case let .undoExpired(id):
                 guard state.undoNotice?.id == id else { return .none }
                 state.undoNotice = nil
-                state.lastRemovedBatch = []
                 return .none
             }
         }
@@ -245,6 +278,7 @@ struct ShelfFeature {
     }
 
     private func recordInHistory(_ removed: [ShelfItem], state: inout State) {
+        state.redoBatch = []
         var history = state.history
         var lastRemovedBatch = state.lastRemovedBatch
         var undoNotice = state.undoNotice
@@ -253,7 +287,8 @@ struct ShelfFeature {
             history: &history,
             lastRemovedBatch: &lastRemovedBatch,
             undoNotice: &undoNotice,
-            noticeID: uuid()
+            noticeID: uuid(),
+            historyLimit: IttanPreferences.historyLimit
         )
         state.history = history
         state.lastRemovedBatch = lastRemovedBatch

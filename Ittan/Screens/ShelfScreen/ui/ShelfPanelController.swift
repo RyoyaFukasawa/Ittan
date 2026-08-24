@@ -6,7 +6,10 @@ final class ShelfPanelController {
     static let shared = ShelfPanelController()
 
     private let panelWidth: CGFloat = 162
-    private let collapsedPanelSize = NSSize(width: 80, height: 80)
+    // ShelfView's fixed card width keeps the hosting view at 148 points even
+    // while its visible content is the narrow tab. Use that real width when
+    // anchoring the collapsed panel so the right edge does not drift off-screen.
+    private let collapsedPanelSize = NSSize(width: 148, height: 80)
     private let itemHeight: CGFloat = 102
     private let emptyHeight: CGFloat = 104
     private let undoToastHeight: CGFloat = 41
@@ -14,7 +17,9 @@ final class ShelfPanelController {
     private let edgeMargin: CGFloat = 0
     private var panel: ShelfPanel?
     private var isCollapsed = false
+    private var expandedShelfHeight: CGFloat = 104
     private var expandedPanelSize = NSSize(width: 162, height: 104)
+    private var isUndoToastVisible = false
     private var pendingPanelResize: Task<Void, Never>?
     private var isTemporarilyExpandedForExternalDrag = false
     private var didAcceptCurrentExternalDrop = false
@@ -52,6 +57,12 @@ final class ShelfPanelController {
 
     func toggleCollapsed() {
         setCollapsed(!isCollapsed)
+    }
+
+    func preferencesDidChange() {
+        guard let panel,
+              let screen = panel.screen ?? ScreenResolver.screenUnderPointer() else { return }
+        position(panel, on: screen, animated: true)
     }
 
     private func setCollapsed(_ collapsed: Bool) {
@@ -148,7 +159,9 @@ final class ShelfPanelController {
             .ignoresCycle,
         ]
         panel.onHorizontalSwipe = { [weak self] delta in
-            guard let self, !self.isCollapsed, delta < 0 else { return }
+            guard let self, !self.isCollapsed else { return }
+            let closesTowardEdge = IttanPreferences.shelfSide == .left ? delta < 0 : delta > 0
+            guard closesTowardEdge else { return }
             self.setCollapsed(true)
         }
         panel.onTabClick = { [weak self] in
@@ -171,6 +184,8 @@ final class ShelfPanelController {
             ? emptyHeight
             : CGFloat(visibleItems) * itemHeight
                 + (itemCount > maximumVisibleItems ? 96 : 72)
+        expandedShelfHeight = shelfHeight
+        isUndoToastVisible = hasUndoNotice
         expandedPanelSize = NSSize(
             width: panelWidth,
             height: shelfHeight + (hasUndoNotice ? undoToastHeight : 0)
@@ -183,9 +198,16 @@ final class ShelfPanelController {
         // screen frame, not visibleFrame (which is inset by the Dock/menu bar).
         let screenFrame = screen.frame
         let targetSize = isCollapsed ? collapsedPanelSize : expandedPanelSize
+        let targetOriginY = isCollapsed
+            ? screenFrame.midY - targetSize.height / 2
+            : screenFrame.midY
+                - expandedShelfHeight / 2
+                - (isUndoToastVisible ? undoToastHeight : 0)
         let origin = NSPoint(
-            x: screenFrame.minX + edgeMargin,
-            y: screenFrame.midY - targetSize.height / 2
+            x: IttanPreferences.shelfSide == .left
+                ? screenFrame.minX + edgeMargin
+                : screenFrame.maxX - targetSize.width - edgeMargin,
+            y: targetOriginY
         )
         let targetFrame = NSRect(origin: origin, size: targetSize)
         if animated {
@@ -224,7 +246,10 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
         let local = convert(point, from: superview)
         let tabMinY = bounds.midY - 40
         let tabMaxY = bounds.midY + 40
-        if local.x <= 80,
+        let isInsideTabHorizontally = IttanPreferences.shelfSide == .left
+            ? local.x <= 78
+            : local.x >= bounds.maxX - 78
+        if isInsideTabHorizontally,
            local.y >= tabMinY,
            local.y <= tabMaxY {
             return self
@@ -295,7 +320,11 @@ private final class ShelfPanel: NSPanel {
             let point = contentView?.convert(event.locationInWindow, from: nil) ?? .zero
             let tabMinY = (contentView?.bounds.midY ?? 0) - 40
             let tabMaxY = (contentView?.bounds.midY ?? 0) + 40
-            if point.x <= 80, point.y >= tabMinY, point.y <= tabMaxY {
+            let contentBounds = contentView?.bounds ?? .zero
+            let isInsideTabHorizontally = IttanPreferences.shelfSide == .left
+                ? point.x <= 78
+                : point.x >= contentBounds.maxX - 78
+            if isInsideTabHorizontally, point.y >= tabMinY, point.y <= tabMaxY {
                 onTabClick?()
                 return
             }
