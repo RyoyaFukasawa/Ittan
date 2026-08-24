@@ -6,7 +6,7 @@ then drag them back out.
 
 <p>
   <a href="https://github.com/RyoyaFukasawa/Ittan/releases/latest/download/Ittan.dmg">
-    <img src="download-button.svg" alt="Download the latest version of Ittan" width="220">
+    <img src="download-button.png" alt="Download the latest version of Ittan" width="220">
   </a>
 </p>
 
