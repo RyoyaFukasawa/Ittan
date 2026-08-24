@@ -5,7 +5,7 @@ appears on the active display. Park items there, switch to the destination,
 then drag them back out.
 
 <p>
-  <a href="https://github.com/RyoyaFukasawa/Ittan/releases/latest/download/Ittan.zip">
+  <a href="https://github.com/RyoyaFukasawa/Ittan/releases/latest/download/Ittan.dmg">
     <img src="download-button.svg" alt="Download the latest version of Ittan" width="220">
   </a>
 </p>
@@ -33,8 +33,8 @@ Ittan is local-only. It has no account, analytics, cloud sync, or network calls.
 
 ### Download
 
-Download the latest notarized `Ittan.zip` using the button above, extract it,
-and move **Ittan** to the Applications folder.
+Download the latest notarized `Ittan.dmg` using the button above, open it, and
+drag **Ittan** onto the **Applications** folder.
 
 ### Homebrew
 
