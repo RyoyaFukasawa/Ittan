@@ -23,6 +23,14 @@ Ittan is local-only. It has no account, analytics, cloud sync, or network calls.
 - macOS 26 or newer
 - Xcode 26 or newer
 
+## Install
+
+Install the latest notarized release with Homebrew:
+
+```sh
+brew install --cask ryoyafukasawa/tap/ittan
+```
+
 ## Build
 
 ```sh
