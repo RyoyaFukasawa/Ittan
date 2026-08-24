@@ -77,6 +77,59 @@ struct ShelfFeatureTests {
         #expect(store.state.items.allSatisfy { !$0.locked })
     }
 
+    @Test("Internal drag reorders items without removing them")
+    func reordersItems() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let items = try ["one.txt", "two.txt", "three.txt", "four.txt"].map {
+            ShelfItem(url: try fixture.makeFile($0))
+        }
+        let store = fixture.testStore(items: items)
+        store.exhaustivity = .off
+
+        await store.send(.previewReorder([items[1].id], relativeTo: items[3].id, .after))
+        #expect(store.state.items == items)
+        await store.send(.commitReorder)
+        #expect(store.state.items.map(\.id) == [items[0].id, items[2].id, items[3].id, items[1].id])
+        #expect(store.state.history.isEmpty)
+    }
+
+    @Test("Internal drag preserves the relative order of a selection")
+    func reordersSelectedItemsTogether() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let items = try ["one.txt", "two.txt", "three.txt", "four.txt"].map {
+            ShelfItem(url: try fixture.makeFile($0))
+        }
+        let store = fixture.testStore(items: items)
+        store.exhaustivity = .off
+
+        await store.send(.previewReorder(
+            [items[1].id, items[2].id],
+            relativeTo: items[0].id,
+            .before
+        ))
+        await store.send(.commitReorder)
+        #expect(store.state.items.map(\.id) == [items[1].id, items[2].id, items[0].id, items[3].id])
+    }
+
+    @Test("Cancelling an internal drag restores the original order")
+    func cancelsReorderPreview() async throws {
+        let fixture = try FeatureFixture()
+        defer { fixture.cleanUp() }
+        let items = try ["one.txt", "two.txt", "three.txt"].map {
+            ShelfItem(url: try fixture.makeFile($0))
+        }
+        let store = fixture.testStore(items: items)
+        store.exhaustivity = .off
+
+        await store.send(.previewReorder([items[0].id], relativeTo: items[2].id, .after))
+        #expect(store.state.reorderPreview != nil)
+        await store.send(.cancelReorder)
+        #expect(store.state.items == items)
+        #expect(store.state.reorderPreview == nil)
+    }
+
     @Test("Renaming updates both the file and shelf reference")
     func renamesItem() async throws {
         let fixture = try FeatureFixture()

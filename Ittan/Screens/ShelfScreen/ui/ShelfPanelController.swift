@@ -226,6 +226,12 @@ final class ShelfPanelController {
 
 @MainActor
 private final class ShelfHostingView: NSHostingView<ShelfView> {
+    private weak var autoScrollView: NSScrollView?
+    private var autoScrollTimer: Timer?
+    private var autoScrollVelocity: CGFloat = 0
+    private var lastInternalDragPoint: NSPoint?
+    private var lastInternalDragIDs: [ShelfItem.ID] = []
+
     required init(rootView: ShelfView) {
         super.init(rootView: rootView)
         registerForDraggedTypes(PasteboardImporter.acceptedTypes)
@@ -279,21 +285,174 @@ private final class ShelfHostingView: NSHostingView<ShelfView> {
 
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if sender.draggingSource is FileDragSourceView {
+            IttanStore.shelf.send(.setDropTargeted(false))
+            return .move
+        }
         guard PasteboardImporter.canImport(sender.draggingPasteboard) else { return [] }
         IttanStore.shelf.send(.setDropTargeted(true))
         return .copy
     }
 
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let source = sender.draggingSource as? FileDragSourceView else { return .copy }
+        let windowPoint = sender.draggingLocation
+        lastInternalDragPoint = windowPoint
+        lastInternalDragIDs = source.draggedIDs
+        updateAutoScrollState(at: windowPoint)
+        updateReorderPreview(at: windowPoint, draggedIDs: source.draggedIDs)
+        return .move
+    }
+
+    private func updateReorderPreview(at windowPoint: NSPoint, draggedIDs: [ShelfItem.ID]) {
+        if let target = closestItemView(to: windowPoint, excluding: Set(draggedIDs)) {
+            let point = target.convert(windowPoint, from: nil)
+            let placement: ShelfItemDropPlacement = point.y >= target.bounds.midY
+                ? .before
+                : .after
+            IttanStore.shelf.send(
+                .previewReorder(draggedIDs, relativeTo: target.item.id, placement)
+            )
+        } else {
+            IttanStore.shelf.send(.previewReorder(draggedIDs, relativeTo: nil, .before))
+        }
+    }
+
+    private func updateAutoScrollState(at windowPoint: NSPoint) {
+        guard let scrollView = descendantScrollView(in: self) else {
+            stopAutoScroll()
+            return
+        }
+        let clipView = scrollView.contentView
+        let point = clipView.convert(windowPoint, from: nil)
+        let visibleBounds = clipView.bounds
+        let threshold: CGFloat = 44
+        let topDistance: CGFloat
+        let bottomDistance: CGFloat
+
+        if clipView.isFlipped {
+            topDistance = point.y - visibleBounds.minY
+            bottomDistance = visibleBounds.maxY - point.y
+        } else {
+            topDistance = visibleBounds.maxY - point.y
+            bottomDistance = point.y - visibleBounds.minY
+        }
+
+        let direction: CGFloat
+        let distance: CGFloat
+        if topDistance < threshold {
+            direction = clipView.isFlipped ? -1 : 1
+            distance = topDistance
+        } else if bottomDistance < threshold {
+            direction = clipView.isFlipped ? 1 : -1
+            distance = bottomDistance
+        } else {
+            stopAutoScroll()
+            return
+        }
+
+        let proximity = 1 - min(max(distance, 0), threshold) / threshold
+        autoScrollVelocity = direction * (1.5 + proximity * 6.5)
+        autoScrollView = scrollView
+        startAutoScroll()
+    }
+
+    private func startAutoScroll() {
+        guard autoScrollTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: 1 / 60,
+            target: self,
+            selector: #selector(performAutoScrollStep),
+            userInfo: nil,
+            repeats: true
+        )
+        autoScrollTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+        autoScrollView = nil
+        autoScrollVelocity = 0
+    }
+
+    @objc private func performAutoScrollStep() {
+        guard let scrollView = autoScrollView,
+              let documentView = scrollView.documentView else {
+            stopAutoScroll()
+            return
+        }
+        let clipView = scrollView.contentView
+        let visibleBounds = clipView.bounds
+        let minimumY = documentView.bounds.minY
+        let maximumY = max(minimumY, documentView.bounds.maxY - visibleBounds.height)
+        let destinationY = min(
+            max(visibleBounds.origin.y + autoScrollVelocity, minimumY),
+            maximumY
+        )
+        guard destinationY != visibleBounds.origin.y else {
+            stopAutoScroll()
+            return
+        }
+        clipView.scroll(to: NSPoint(x: visibleBounds.origin.x, y: destinationY))
+        scrollView.reflectScrolledClipView(clipView)
+        if let point = lastInternalDragPoint, !lastInternalDragIDs.isEmpty {
+            updateReorderPreview(at: point, draggedIDs: lastInternalDragIDs)
+        }
+    }
+
+    private func closestItemView(
+        to windowPoint: NSPoint,
+        excluding draggedIDs: Set<ShelfItem.ID>
+    ) -> FileDragSourceView? {
+        descendantItemViews(in: self)
+            .filter { !draggedIDs.contains($0.item.id) }
+            .min { lhs, rhs in
+                verticalDistance(from: windowPoint, to: lhs)
+                    < verticalDistance(from: windowPoint, to: rhs)
+            }
+    }
+
+    private func descendantItemViews(in view: NSView) -> [FileDragSourceView] {
+        view.subviews.flatMap { subview in
+            let current = (subview as? FileDragSourceView).map { [$0] } ?? []
+            return current + descendantItemViews(in: subview)
+        }
+    }
+
+    private func descendantScrollView(in view: NSView) -> NSScrollView? {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView { return scrollView }
+            if let scrollView = descendantScrollView(in: subview) { return scrollView }
+        }
+        return nil
+    }
+
+    private func verticalDistance(from windowPoint: NSPoint, to view: NSView) -> CGFloat {
+        let point = view.convert(windowPoint, from: nil)
+        if point.y < view.bounds.minY { return view.bounds.minY - point.y }
+        if point.y > view.bounds.maxY { return point.y - view.bounds.maxY }
+        return 0
+    }
+
     override func draggingExited(_ sender: NSDraggingInfo?) {
+        stopAutoScroll()
         IttanStore.shelf.send(.setDropTargeted(false))
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
+        stopAutoScroll()
         IttanStore.shelf.send(.setDropTargeted(false))
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        stopAutoScroll()
         IttanStore.shelf.send(.setDropTargeted(false))
+        if sender.draggingSource is FileDragSourceView {
+            IttanStore.shelf.send(.commitReorder)
+            return true
+        }
         let imported = PasteboardImporter.importItems(from: sender.draggingPasteboard) { urls in
             IttanStore.shelf.send(.addURLs(urls))
         }

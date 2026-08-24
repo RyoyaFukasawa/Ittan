@@ -117,8 +117,9 @@ struct ShelfView: View {
                 } else {
                     ScrollView(.vertical) {
                         LazyVStack(spacing: 8) {
-                            ForEach(store.items) { item in
+                            ForEach(presentedShelfItems) { item in
                                 ShelfItemRow(store: store, item: item)
+                                    .opacity(reorderingItemIDs.contains(item.id) ? 0 : 1)
                                     .transition(
                                         .opacity.combined(with: .scale(scale: 0.96))
                                     )
@@ -128,7 +129,7 @@ struct ShelfView: View {
                         .padding(.vertical, 36)
                         .animation(
                             .smooth(duration: 0.26, extraBounce: 0),
-                            value: store.items.map(\.id)
+                            value: presentedShelfItems.map(\.id)
                         )
                     }
                     .scrollIndicators(.hidden)
@@ -168,6 +169,22 @@ struct ShelfView: View {
                 cornerControl(bottomTrailingAction)
             }
         }
+    }
+
+    private var presentedShelfItems: [ShelfItem] {
+        guard let preview = store.reorderPreview else { return store.items }
+        let movingIDs = Set(preview.itemIDs)
+        let movingItems = store.items.filter { movingIDs.contains($0.id) }
+        var remainingItems = store.items.filter { !movingIDs.contains($0.id) }
+        remainingItems.insert(
+            contentsOf: movingItems,
+            at: min(max(0, preview.insertionIndex), remainingItems.endIndex)
+        )
+        return remainingItems
+    }
+
+    private var reorderingItemIDs: Set<ShelfItem.ID> {
+        Set(store.reorderPreview?.itemIDs ?? [])
     }
 
     @ViewBuilder
@@ -536,7 +553,7 @@ private struct FileDragSource: NSViewRepresentable {
 }
 
 @MainActor
-private final class FileDragSourceView: NSView, NSDraggingSource {
+final class FileDragSourceView: NSView, NSDraggingSource {
     var store: StoreOf<ShelfFeature>
     var item: ShelfItem
     private var mouseDownEvent: NSEvent?
@@ -558,6 +575,7 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    var draggedIDs: [ShelfItem.ID] { draggedItems.map(\.id) }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
@@ -596,26 +614,78 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         draggedItems = store.items.filter { draggedIDs.contains($0.id) && $0.exists }
         let draggingItems = draggedItems.enumerated().map { index, draggedItem in
             let dragItem = NSDraggingItem(pasteboardWriter: ShelfPasteboardWriter.make(for: draggedItem))
-            let icon = NSWorkspace.shared.icon(forFile: draggedItem.path)
-            icon.size = NSSize(width: 48, height: 48)
+            let preview = dragPreview(for: draggedItem, size: 56)
             dragItem.setDraggingFrame(
                 NSRect(
-                    x: current.x - 24 + CGFloat(index * 3),
-                    y: current.y - 24 - CGFloat(index * 3),
-                    width: 48,
-                    height: 48
+                    x: current.x - 28 + CGFloat(index * 3),
+                    y: current.y - 28 - CGFloat(index * 3),
+                    width: 56,
+                    height: 56
                 ),
-                contents: icon
+                contents: preview
             )
+            dragItem.imageComponentsProvider = {
+                let component = NSDraggingImageComponent(key: .icon)
+                component.contents = preview
+                component.frame = NSRect(x: 0, y: 0, width: 56, height: 56)
+                return [component]
+            }
             return dragItem
         }
         beginDraggingSession(with: draggingItems, event: event, source: self)
     }
 
+    private func dragPreview(for item: ShelfItem, size: CGFloat) -> NSImage {
+        let sourceImage: NSImage
+        if item.url.pathExtension.lowercased() == "webloc",
+           let linkPreview = NSImage(
+               contentsOf: item.url.deletingPathExtension().appendingPathExtension("preview.png")
+           ) {
+            sourceImage = linkPreview
+        } else if let image = NSImage(contentsOf: item.url) {
+            sourceImage = image
+        } else {
+            sourceImage = NSWorkspace.shared.icon(forFile: item.path)
+        }
+
+        let canvasSize = NSSize(width: size, height: size)
+        return NSImage(size: canvasSize, flipped: false) { rect in
+            let sourceSize = sourceImage.size
+            let scale = min(rect.width / sourceSize.width, rect.height / sourceSize.height)
+            let drawSize = NSSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+            let drawRect = NSRect(
+                x: rect.midX - drawSize.width / 2,
+                y: rect.midY - drawSize.height / 2,
+                width: drawSize.width,
+                height: drawSize.height
+            )
+            sourceImage.draw(
+                in: drawRect,
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1,
+                respectFlipped: true,
+                hints: [.interpolation: NSImageInterpolation.high]
+            )
+            return true
+        }
+    }
+
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard !(sender.draggingSource is FileDragSourceView) else { return [] }
+        if sender.draggingSource is FileDragSourceView {
+            store.send(.setDropTargeted(false))
+            return .move
+        }
         store.send(.setDropTargeted(true))
         return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let source = sender.draggingSource as? FileDragSourceView else { return .copy }
+        let location = convert(sender.draggingLocation, from: nil)
+        let placement: ShelfItemDropPlacement = location.y >= bounds.midY ? .before : .after
+        store.send(.previewReorder(source.draggedIDs, relativeTo: item.id, placement))
+        return .move
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
@@ -628,7 +698,10 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         store.send(.setDropTargeted(false))
-        guard !(sender.draggingSource is FileDragSourceView) else { return false }
+        if sender.draggingSource is FileDragSourceView {
+            store.send(.commitReorder)
+            return true
+        }
         return PasteboardImporter.importItems(from: sender.draggingPasteboard) { [store] urls in
             store.send(.addURLs(urls))
         }
@@ -663,7 +736,7 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         _ session: NSDraggingSession,
         sourceOperationMaskFor context: NSDraggingContext
     ) -> NSDragOperation {
-        context == .outsideApplication ? .copy : []
+        context == .outsideApplication ? .copy : .move
     }
 
     func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
@@ -676,7 +749,8 @@ private final class FileDragSourceView: NSView, NSDraggingSource {
         operation: NSDragOperation
     ) {
         ApplicationController.shared.setInternalDragActive(false)
-        if operation != [], IttanPreferences.removesAfterSuccessfulDrag {
+        store.send(.cancelReorder)
+        if operation == .copy, IttanPreferences.removesAfterSuccessfulDrag {
             store.send(.dragOutSucceeded(draggedItems.map(\.id)))
         }
         draggedItems = []

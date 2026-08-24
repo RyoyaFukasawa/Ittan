@@ -1,8 +1,18 @@
 import ComposableArchitecture
 import Foundation
 
+enum ShelfItemDropPlacement: Equatable {
+    case before
+    case after
+}
+
 @Reducer
 struct ShelfFeature {
+    struct ReorderPreview: Equatable {
+        let itemIDs: [ShelfItem.ID]
+        let insertionIndex: Int
+    }
+
     @ObservableState
     struct State: Equatable {
         var items: [ShelfItem]
@@ -14,6 +24,7 @@ struct ShelfFeature {
         var undoNotice: UndoNotice?
         var isDropTargeted = false
         var isPanelCollapsed = false
+        var reorderPreview: ReorderPreview?
 
         init(items: [ShelfItem] = [], history: [ShelfItem] = []) {
             self.items = items
@@ -28,13 +39,16 @@ struct ShelfFeature {
 
     enum Action: Equatable {
         case addURLs([URL])
+        case cancelReorder
         case clearButtonTapped
         case clearHistoryButtonTapped
         case createNoteButtonTapped
+        case commitReorder
         case dragOutSucceeded([ShelfItem.ID])
         case fileMonitoringStarted
         case historyLimitChanged(Int)
         case refreshFileLocations
+        case previewReorder([ShelfItem.ID], relativeTo: ShelfItem.ID?, ShelfItemDropPlacement)
         case prepareDrag(ShelfItem.ID)
         case redoButtonTapped
         case removeSelected
@@ -67,6 +81,10 @@ struct ShelfFeature {
                     return .none
                 }
                 persistItems(state.items)
+                return .none
+
+            case .cancelReorder:
+                state.reorderPreview = nil
                 return .none
 
             case .clearButtonTapped:
@@ -102,6 +120,17 @@ struct ShelfFeature {
                     return beep()
                 }
 
+            case .commitReorder:
+                guard let preview = state.reorderPreview else { return .none }
+                state.reorderPreview = nil
+                guard reorderItems(
+                    preview.itemIDs,
+                    insertionIndex: preview.insertionIndex,
+                    items: &state.items
+                ) else { return .none }
+                persistItems(state.items)
+                return .none
+
             case let .dragOutSucceeded(ids):
                 let ids = Set(ids)
                 let removableIDs = Set(
@@ -128,6 +157,26 @@ struct ShelfFeature {
                 guard refreshed != state.items else { return .none }
                 state.items = refreshed
                 persistItems(state.items)
+                return .none
+
+            case let .previewReorder(ids, targetID, placement):
+                let movingIDs = Set(ids)
+                guard !movingIDs.isEmpty,
+                      targetID.map({ !movingIDs.contains($0) }) ?? true else { return .none }
+                let orderedIDs = state.items.filter { movingIDs.contains($0.id) }.map(\.id)
+                guard !orderedIDs.isEmpty else { return .none }
+                let remainingItems = state.items.filter { !movingIDs.contains($0.id) }
+                let insertionIndex: Int
+                if let targetID,
+                   let targetIndex = remainingItems.firstIndex(where: { $0.id == targetID }) {
+                    insertionIndex = placement == .before ? targetIndex : targetIndex + 1
+                } else {
+                    insertionIndex = remainingItems.endIndex
+                }
+                state.reorderPreview = ReorderPreview(
+                    itemIDs: orderedIDs,
+                    insertionIndex: insertionIndex
+                )
                 return .none
 
             case let .prepareDrag(id):
@@ -281,6 +330,24 @@ struct ShelfFeature {
         recordInHistory(removed, state: &state)
         persistItems(state.items)
         return undoExpirationEffect(for: state.undoNotice)
+    }
+
+    private func reorderItems(
+        _ ids: [ShelfItem.ID],
+        insertionIndex: Int,
+        items: inout [ShelfItem]
+    ) -> Bool {
+        let movingIDs = Set(ids)
+        let movingItems = items.filter { movingIDs.contains($0.id) }
+        guard !movingItems.isEmpty else { return false }
+        var remainingItems = items.filter { !movingIDs.contains($0.id) }
+        remainingItems.insert(
+            contentsOf: movingItems,
+            at: min(max(0, insertionIndex), remainingItems.endIndex)
+        )
+        guard remainingItems != items else { return false }
+        items = remainingItems
+        return true
     }
 
     private func recordInHistory(_ removed: [ShelfItem], state: inout State) {
