@@ -84,6 +84,119 @@ struct ShelfStoreTests {
 
         #expect(fixture.store.loadHistory() == [item])
     }
+
+    @Test("A multi-shelf workspace survives a save and load round trip")
+    func workspaceRoundTrip() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let leftFile = try fixture.makeFile("left.txt")
+        let floatingFile = try fixture.makeFile("floating.txt")
+        let removedFile = try fixture.makeFile("removed.txt")
+        let savedAt = Date(timeIntervalSince1970: 1_234)
+        let leftShelf = ShelfWorkspace.Shelf(
+            id: UUID(),
+            name: "Left",
+            items: [ShelfItem(url: leftFile, addedAt: savedAt)],
+            dimensions: .init(width: 378, height: 480),
+            placement: .docked(
+                screenID: "main",
+                edge: .left,
+                normalizedMidY: 0.4,
+                isCollapsed: true,
+                order: 0
+            )
+        )
+        let floatingShelf = ShelfWorkspace.Shelf(
+            id: UUID(),
+            name: nil,
+            items: [ShelfItem(url: floatingFile, addedAt: savedAt)],
+            placement: .floating(
+                screenID: "main",
+                normalizedFrame: CGRect(x: 0.2, y: 0.3, width: 0.25, height: 0.5)
+            )
+        )
+        let workspace = ShelfWorkspace(
+            shelves: [leftShelf, floatingShelf],
+            history: [ShelfItem(url: removedFile, addedAt: savedAt)],
+            activeShelfID: floatingShelf.id
+        )
+
+        try fixture.store.saveWorkspace(workspace)
+
+        #expect(
+            fixture.store.loadWorkspace(defaultPlacement: leftShelf.placement) == workspace
+        )
+    }
+
+    @Test("Legacy workspaces without dimensions use the default size")
+    func legacyWorkspaceDefaultsDimensions() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let legacyShelf = LegacyShelf(
+            id: UUID(),
+            name: "Legacy",
+            items: [],
+            placement: .floating(
+                screenID: nil,
+                normalizedFrame: CGRect(x: 0.2, y: 0.3, width: 0.25, height: 0.5)
+            )
+        )
+        let legacyWorkspace = LegacyWorkspace(
+            version: ShelfWorkspace.currentVersion,
+            shelves: [legacyShelf],
+            history: [],
+            activeShelfID: legacyShelf.id
+        )
+        try JSONEncoder().encode(legacyWorkspace).write(to: fixture.store.workspaceURL)
+
+        let workspace = fixture.store.loadWorkspace(defaultPlacement: legacyShelf.placement)
+
+        #expect(workspace.shelves.first?.dimensions == .default)
+    }
+
+    @Test("Legacy items and history migrate into one workspace shelf")
+    func migratesLegacyStorage() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let savedAt = Date(timeIntervalSince1970: 1_234)
+        let item = ShelfItem(
+            url: try fixture.makeFile("legacy.txt"),
+            addedAt: savedAt
+        )
+        let removedItem = ShelfItem(
+            url: try fixture.makeFile("legacy-removed.txt"),
+            addedAt: savedAt
+        )
+        let placement = ShelfPlacement.floating(
+            screenID: nil,
+            normalizedFrame: CGRect(x: 0.7, y: 0.2, width: 0.2, height: 0.5)
+        )
+        try fixture.store.save([item])
+        try fixture.store.saveHistory([removedItem])
+
+        let workspace = fixture.store.loadWorkspace(defaultPlacement: placement)
+
+        #expect(workspace.shelves.count == 1)
+        #expect(workspace.shelves.first?.items == [item])
+        #expect(workspace.shelves.first?.placement == placement)
+        #expect(workspace.history == [removedItem])
+        #expect(workspace.activeShelfID == workspace.shelves.first?.id)
+        #expect(FileManager.default.fileExists(atPath: fixture.store.workspaceURL.path))
+    }
+}
+
+private struct LegacyWorkspace: Encodable {
+    let version: Int
+    let shelves: [LegacyShelf]
+    let history: [ShelfItem]
+    let activeShelfID: UUID?
+}
+
+private struct LegacyShelf: Encodable {
+    let id: UUID
+    let name: String?
+    let items: [ShelfItem]
+    let placement: ShelfPlacement
 }
 
 private struct Fixture {

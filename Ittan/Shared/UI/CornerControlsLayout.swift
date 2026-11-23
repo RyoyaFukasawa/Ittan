@@ -23,7 +23,7 @@ struct CornerControlsLayout<Content: View>: View {
 
     init(
         _ corner: CornerControlsCorner,
-        inset: CGFloat = 8,
+        inset: CGFloat = ShelfLayoutMetrics.cornerOuterPadding,
         @ViewBuilder content: () -> Content
     ) {
         self.corner = corner

@@ -1,15 +1,5 @@
 import Foundation
 
-struct UndoNotice: Identifiable, Equatable, Sendable {
-    let id: UUID
-    let message: String
-
-    init(id: UUID = UUID(), message: String) {
-        self.id = id
-        self.message = message
-    }
-}
-
 enum RemoveShelfItems {
     static func apply(
         ids: Set<ShelfItem.ID>,
@@ -26,8 +16,6 @@ enum RemoveShelfItems {
         _ removed: [ShelfItem],
         history: inout [ShelfItem],
         lastRemovedBatch: inout [ShelfItem],
-        undoNotice: inout UndoNotice?,
-        noticeID: UUID,
         historyLimit: Int
     ) {
         history.removeAll { old in removed.contains(where: { $0.path == old.path }) }
@@ -36,11 +24,5 @@ enum RemoveShelfItems {
             history.removeLast(history.count - historyLimit)
         }
         lastRemovedBatch = removed
-        undoNotice = UndoNotice(
-            id: noticeID,
-            message: removed.count == 1
-                ? "Removed \(removed[0].displayName)"
-                : "Removed \(removed.count) items"
-        )
     }
 }

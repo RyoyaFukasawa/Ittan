@@ -3,7 +3,9 @@ import SwiftUI
 
 private enum ShelfControlSlot: CaseIterable, Identifiable {
     case topLeading, topTrailing, bottomLeading, bottomTrailing
+
     var id: Self { self }
+
     var alignment: Alignment {
         switch self {
         case .topLeading: .topLeading
@@ -12,6 +14,7 @@ private enum ShelfControlSlot: CaseIterable, Identifiable {
         case .bottomTrailing: .bottomTrailing
         }
     }
+
     var accessibilityLabel: String {
         switch self {
         case .topLeading: "Top Left"
@@ -25,7 +28,10 @@ private enum ShelfControlSlot: CaseIterable, Identifiable {
 private enum CornerActionZone: Equatable {
     case corner(ShelfControlSlot)
     case tray
-    var usesCornerStyle: Bool { if case .corner = self { true } else { false } }
+
+    var usesCornerStyle: Bool {
+        if case .corner = self { true } else { false }
+    }
 }
 
 private struct ZoneFrame: Equatable {
@@ -90,7 +96,6 @@ struct CornerControlsEditor: View {
                 )
                 .position(dragLocation)
                 .allowsHitTesting(false)
-                .transition(.identity)
                 .zIndex(100)
             }
         }
@@ -103,8 +108,11 @@ struct CornerControlsEditor: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(.primary.opacity(0.035))
                 .overlay {
-                    Image(systemName: "shippingbox")
-                        .font(.system(size: 30, weight: .ultraLight))
+                    Image("MenuBarIcon")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
                         .foregroundStyle(.tertiary)
                 }
                 .overlay {
@@ -137,9 +145,9 @@ struct CornerControlsEditor: View {
                             dash: highlighted ? [] : [4, 4]
                         )
                     )
-                    .background(Circle().fill(
-                        highlighted ? Color.accentColor.opacity(0.18) : .clear
-                    ))
+                    .background(
+                        Circle().fill(highlighted ? Color.accentColor.opacity(0.18) : .clear)
+                    )
                     .scaleEffect(highlighted ? 1.12 : 1)
             }
             if action != .none {
@@ -180,13 +188,17 @@ struct CornerControlsEditor: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(.primary.opacity(highlighted ? 0.07 : 0.035)))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(
-                highlighted ? Color.accentColor : .primary.opacity(0.1),
-                lineWidth: highlighted ? 2 : 1
-            ))
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.primary.opacity(highlighted ? 0.07 : 0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    highlighted ? Color.accentColor : .primary.opacity(0.1),
+                    lineWidth: highlighted ? 2 : 1
+                )
+        )
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hoveredZone)
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: placementValues)
         .background(frameReporter(.tray))
@@ -223,10 +235,14 @@ struct CornerControlsEditor: View {
     private func resolveDrop(at point: CGPoint) -> CornerActionZone? {
         for frame in zoneFrames {
             if case .corner = frame.zone,
-               frame.rect.insetBy(dx: -16, dy: -16).contains(point) { return frame.zone }
+               frame.rect.insetBy(dx: -16, dy: -16).contains(point) {
+                return frame.zone
+            }
         }
         if let tray = zoneFrames.first(where: { $0.zone == .tray }),
-           tray.rect.contains(point) { return .tray }
+           tray.rect.contains(point) {
+            return .tray
+        }
         return nil
     }
 
@@ -288,9 +304,12 @@ private struct FloatingActionChip: View {
     private static let diameter: CGFloat = 32
     private static let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
     private var pillWidth: CGFloat {
-        max(Self.diameter, ceil((action.title as NSString)
-            .size(withAttributes: [.font: Self.font]).width) + 44)
+        max(
+            Self.diameter,
+            ceil((action.title as NSString).size(withAttributes: [.font: Self.font]).width) + 44
+        )
     }
+
     var body: some View {
         Capsule()
             .fill(.regularMaterial)
@@ -310,9 +329,12 @@ private struct ActionChip: View {
     private static let diameter: CGFloat = 32
     private static let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
     private var pillWidth: CGFloat {
-        max(Self.diameter, ceil((action.title as NSString)
-            .size(withAttributes: [.font: Self.font]).width) + 44)
+        max(
+            Self.diameter,
+            ceil((action.title as NSString).size(withAttributes: [.font: Self.font]).width) + 44
+        )
     }
+
     var body: some View {
         chipContent(action: action, isCorner: isCorner)
             .frame(width: isCorner ? Self.diameter : pillWidth, height: Self.diameter)
@@ -321,10 +343,12 @@ private struct ActionChip: View {
             .overlay(Capsule().strokeBorder(.primary.opacity(0.14), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 2)
             .contentShape(Capsule())
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.5).combined(with: .opacity),
-                removal: .opacity
-            ))
+            .transition(
+                .asymmetric(
+                    insertion: .scale(scale: 0.5).combined(with: .opacity),
+                    removal: .opacity
+                )
+            )
     }
 }
 
@@ -342,18 +366,22 @@ private func chipContent(action: ShelfCornerAction, isCorner: Bool) -> some View
                 .font(.system(size: 12, weight: .semibold))
                 .fixedSize()
         }
-            .opacity(isCorner ? 0 : 1)
-            .scaleEffect(isCorner ? 0.4 : 1)
-            .blur(radius: isCorner ? 2 : 0)
+        .opacity(isCorner ? 0 : 1)
+        .scaleEffect(isCorner ? 0.4 : 1)
+        .blur(radius: isCorner ? 2 : 0)
     }
     .foregroundStyle(.primary.opacity(0.78))
 }
 
 private struct CornerActionFlowLayout: Layout {
     var spacing: CGFloat = 8
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0, rowHeight: CGFloat = 0, height: CGFloat = 0, rowWidth: CGFloat = 0
+        var x: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var height: CGFloat = 0
+        var rowWidth: CGFloat = 0
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
             if x + size.width > maxWidth, x > 0 {
@@ -369,8 +397,11 @@ private struct CornerActionFlowLayout: Layout {
         rowWidth = max(rowWidth, x - spacing)
         return CGSize(width: maxWidth == .infinity ? rowWidth : maxWidth, height: height)
     }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
             if x + size.width > bounds.maxX, x > bounds.minX {
@@ -378,7 +409,11 @@ private struct CornerActionFlowLayout: Layout {
                 y += rowHeight + spacing
                 rowHeight = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            subview.place(
+                at: CGPoint(x: x, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(size)
+            )
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }

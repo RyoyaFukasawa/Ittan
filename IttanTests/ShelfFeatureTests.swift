@@ -77,7 +77,6 @@ struct ShelfFeatureTests {
         await store.send(.undoButtonTapped)
         #expect(store.state.items == [item])
         #expect(store.state.history.isEmpty)
-        #expect(store.state.undoNotice == nil)
     }
 
     @Test("Locked items cannot be removed or cleared")
@@ -218,7 +217,7 @@ struct ShelfFeatureTests {
         #expect(store.state.dragItems(startingWith: items[0].id).count == 3)
     }
 
-    @Test("Restoring from history dismisses the current Undo notice")
+    @Test("Restoring from history removes the item from the undo batch")
     func restoreFromHistory() async throws {
         let fixture = try FeatureFixture()
         defer { fixture.cleanUp() }
@@ -231,11 +230,10 @@ struct ShelfFeatureTests {
 
         #expect(store.state.items == [item])
         #expect(store.state.history.isEmpty)
-        #expect(store.state.undoNotice == nil)
     }
 
-    @Test("Undo remains available after its toast expires and supports redo")
-    func undoAfterToastAndRedo() async throws {
+    @Test("Undo and redo remain available without a temporary toast")
+    func undoAndRedo() async throws {
         let fixture = try FeatureFixture()
         defer { fixture.cleanUp() }
         let item = ShelfItem(url: try fixture.makeFile("undo-redo.txt"))
@@ -243,10 +241,6 @@ struct ShelfFeatureTests {
         store.exhaustivity = .off
 
         await store.send(.removeButtonTapped(item.id))
-        let noticeID = try #require(store.state.undoNotice?.id)
-        await store.send(.undoExpired(noticeID))
-        #expect(store.state.undoNotice == nil)
-
         await store.send(.undoButtonTapped)
         #expect(store.state.items == [item])
 
@@ -269,7 +263,6 @@ struct ShelfFeatureTests {
         } withDependencies: {
             $0.shelfStorage = fixture.storage
             $0.continuousClock = TestClock()
-            $0.uuid = .incrementing
         }
         store.exhaustivity = .off
 
@@ -299,7 +292,6 @@ private struct FeatureFixture {
         } withDependencies: {
             $0.shelfStorage = storage
             $0.continuousClock = TestClock()
-            $0.uuid = .incrementing
         }
     }
 

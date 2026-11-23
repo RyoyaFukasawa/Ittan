@@ -14,22 +14,42 @@ struct ShelfFeature {
     }
 
     @ObservableState
-    struct State: Equatable {
+    struct State: Equatable, Identifiable {
+        let id: UUID
+        var name: String?
+        var placement: ShelfPlacement
+        var dimensions: ShelfDimensions
         var items: [ShelfItem]
         var history: [ShelfItem]
         var selectedIDs: Set<ShelfItem.ID> = []
         var selectionAnchor: ShelfItem.ID?
         var lastRemovedBatch: [ShelfItem] = []
         var redoBatch: [ShelfItem] = []
-        var undoNotice: UndoNotice?
         var isDropTargeted = false
         var isPanelCollapsed = false
         var reorderPreview: ReorderPreview?
         var externalDropInsertionIndex: Int?
 
-        init(items: [ShelfItem] = [], history: [ShelfItem] = []) {
+        init(
+            id: UUID = UUID(),
+            name: String? = nil,
+            items: [ShelfItem] = [],
+            history: [ShelfItem] = [],
+            dimensions: ShelfDimensions = .default,
+            placement: ShelfPlacement = .floating(
+                screenID: nil,
+                normalizedFrame: CGRect(x: 0.75, y: 0.2, width: 0.2, height: 0.55)
+            )
+        ) {
+            self.id = id
+            self.name = name
+            self.placement = placement
+            self.dimensions = dimensions
             self.items = items
             self.history = history
+            if case let .docked(_, _, _, isCollapsed, _) = placement {
+                self.isPanelCollapsed = isCollapsed
+            }
         }
 
         func dragItems(startingWith id: ShelfItem.ID) -> [ShelfItem] {
@@ -66,16 +86,12 @@ struct ShelfFeature {
         case toggleLock(ShelfItem.ID)
         case toggleAllLocks
         case undoButtonTapped
-        case undoExpired(UUID)
     }
 
     @Dependency(\.continuousClock) var clock
     @Dependency(\.feedbackClient) var feedback
     @Dependency(\.noteClient) var noteClient
     @Dependency(\.shelfStorage) var storage
-    @Dependency(\.uuid) var uuid
-
-    private enum CancelID { case undoNotice }
 
     var body: some ReducerOf<Self> {
         Reduce { state, action in
@@ -116,15 +132,14 @@ struct ShelfFeature {
                 state.items.removeAll { removableIDs.contains($0.id) }
                 state.selectedIDs.subtract(removableIDs)
                 persistItems(state.items)
-                return undoExpirationEffect(for: state.undoNotice)
+                return .none
 
             case .clearHistoryButtonTapped:
                 state.history.removeAll()
                 state.lastRemovedBatch = []
                 state.redoBatch = []
-                state.undoNotice = nil
                 persistHistory(state.history)
-                return .cancel(id: CancelID.undoNotice)
+                return .none
 
             case .createNoteButtonTapped:
                 do {
@@ -265,16 +280,14 @@ struct ShelfFeature {
                 let item = state.history[index]
                 guard storage.fileExists(item.url),
                       !state.items.contains(where: { $0.path == item.path }) else { return .none }
-                let dismissesUndo = state.lastRemovedBatch.contains(where: { $0.id == id })
-                if dismissesUndo {
+                if state.lastRemovedBatch.contains(where: { $0.id == id }) {
                     state.lastRemovedBatch = []
-                    state.undoNotice = nil
                 }
                 state.history.remove(at: index)
                 state.items.insert(item, at: 0)
                 persistHistory(state.history)
                 persistItems(state.items)
-                return dismissesUndo ? .cancel(id: CancelID.undoNotice) : .none
+                return .none
 
             case let .select(id, modifiers):
                 var selectedIDs = state.selectedIDs
@@ -325,19 +338,13 @@ struct ShelfFeature {
                     storage.fileExists(item.url) && !state.items.contains(where: { $0.path == item.path })
                 }
                 state.lastRemovedBatch = []
-                state.undoNotice = nil
-                guard !restorable.isEmpty else { return .cancel(id: CancelID.undoNotice) }
+                guard !restorable.isEmpty else { return .none }
                 state.redoBatch = restorable
                 let restoredIDs = Set(restorable.map(\.id))
                 state.history.removeAll { restoredIDs.contains($0.id) }
                 state.items.insert(contentsOf: restorable, at: 0)
                 persistHistory(state.history)
                 persistItems(state.items)
-                return .cancel(id: CancelID.undoNotice)
-
-            case let .undoExpired(id):
-                guard state.undoNotice?.id == id else { return .none }
-                state.undoNotice = nil
                 return .none
             }
         }
@@ -359,7 +366,7 @@ struct ShelfFeature {
         state.selectedIDs = selectedIDs
         recordInHistory(removed, state: &state)
         persistItems(state.items)
-        return undoExpirationEffect(for: state.undoNotice)
+        return .none
     }
 
     private func reorderItems(
@@ -384,28 +391,15 @@ struct ShelfFeature {
         state.redoBatch = []
         var history = state.history
         var lastRemovedBatch = state.lastRemovedBatch
-        var undoNotice = state.undoNotice
         RemoveShelfItems.record(
             removed,
             history: &history,
             lastRemovedBatch: &lastRemovedBatch,
-            undoNotice: &undoNotice,
-            noticeID: uuid(),
             historyLimit: IttanPreferences.historyLimit
         )
         state.history = history
         state.lastRemovedBatch = lastRemovedBatch
-        state.undoNotice = undoNotice
         persistHistory(state.history)
-    }
-
-    private func undoExpirationEffect(for notice: UndoNotice?) -> Effect<Action> {
-        guard let notice else { return .none }
-        return .run { send in
-            try await clock.sleep(for: .seconds(5))
-            await send(.undoExpired(notice.id))
-        }
-        .cancellable(id: CancelID.undoNotice, cancelInFlight: true)
     }
 
     private func beep() -> Effect<Action> {

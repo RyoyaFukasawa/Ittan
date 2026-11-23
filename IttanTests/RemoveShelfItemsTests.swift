@@ -17,19 +17,15 @@ struct RemoveShelfItemsTests {
         }
         var history = Array(items.prefix(3))
         var lastRemovedBatch: [ShelfItem] = []
-        var notice: UndoNotice?
 
         RemoveShelfItems.record(
             [items[3]],
             history: &history,
             lastRemovedBatch: &lastRemovedBatch,
-            undoNotice: &notice,
-            noticeID: UUID(),
             historyLimit: 2
         )
 
         #expect(history == [items[3], items[0]])
         #expect(lastRemovedBatch == [items[3]])
-        #expect(notice != nil)
     }
 }

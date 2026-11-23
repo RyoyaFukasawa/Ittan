@@ -17,9 +17,9 @@ import UniformTypeIdentifiers
 
 struct ShelfView: View {
     let store: StoreOf<ShelfFeature>
+    let onToggleCollapsed: () -> Void
     @State private var isTabHovered = false
     @State private var isHistoryPresented = false
-    @AppStorage(IttanPreferences.shelfSideKey) private var shelfSideRaw = ShelfSide.left.rawValue
     @AppStorage(IttanPreferences.topLeadingCornerActionKey)
     private var topLeadingActionRaw = IttanPreferences.defaultTopLeadingCornerAction.rawValue
     @AppStorage(IttanPreferences.topTrailingCornerActionKey)
@@ -28,30 +28,30 @@ struct ShelfView: View {
     private var bottomLeadingActionRaw = IttanPreferences.defaultBottomLeadingCornerAction.rawValue
     @AppStorage(IttanPreferences.bottomTrailingCornerActionKey)
     private var bottomTrailingActionRaw = IttanPreferences.defaultBottomTrailingCornerAction.rawValue
-    private let shelfWidth: CGFloat = 148
-    private let collapsedPanelHeight: CGFloat = 80
-    private let undoToastHeight: CGFloat = 41
 
-    private var shelfSide: ShelfSide { ShelfSide(rawValue: shelfSideRaw) ?? .left }
-    private var edgeAlignment: Alignment { shelfSide == .left ? .leading : .trailing }
-    private var edgeSign: CGFloat { shelfSide == .left ? -1 : 1 }
-    private var shelfEdge: Edge { shelfSide == .left ? .leading : .trailing }
+    private var shelfSide: ShelfSide {
+        if case let .docked(_, edge, _, _, _) = store.placement {
+            return edge == .left ? .left : .right
+        }
+        return .left
+    }
     private var topLeadingAction: ShelfCornerAction {
-        ShelfCornerAction(rawValue: topLeadingActionRaw)
-            ?? IttanPreferences.defaultTopLeadingCornerAction
+        ShelfCornerAction(rawValue: topLeadingActionRaw) ?? .none
     }
     private var topTrailingAction: ShelfCornerAction {
-        ShelfCornerAction(rawValue: topTrailingActionRaw)
-            ?? IttanPreferences.defaultTopTrailingCornerAction
+        ShelfCornerAction(rawValue: topTrailingActionRaw) ?? .none
     }
     private var bottomLeadingAction: ShelfCornerAction {
-        ShelfCornerAction(rawValue: bottomLeadingActionRaw)
-            ?? IttanPreferences.defaultBottomLeadingCornerAction
+        ShelfCornerAction(rawValue: bottomLeadingActionRaw) ?? .none
     }
     private var bottomTrailingAction: ShelfCornerAction {
-        ShelfCornerAction(rawValue: bottomTrailingActionRaw)
-            ?? IttanPreferences.defaultBottomTrailingCornerAction
+        ShelfCornerAction(rawValue: bottomTrailingActionRaw) ?? .none
     }
+    private var historyArrowEdge: Edge {
+        IttanPreferences.shelfEdge == .right ? .trailing : .leading
+    }
+    private var edgeAlignment: Alignment { shelfSide == .left ? .leading : .trailing }
+    private var edgeSign: CGFloat { shelfSide == .left ? -1 : 1 }
     private var tabShape: UnevenRoundedRectangle {
         let radius: CGFloat = 14
         return UnevenRoundedRectangle(
@@ -65,82 +65,70 @@ struct ShelfView: View {
         )
     }
 
-    init(store: StoreOf<ShelfFeature> = IttanStore.shelf) {
+    init(
+        store: StoreOf<ShelfFeature>,
+        onToggleCollapsed: @escaping () -> Void
+    ) {
         self.store = store
+        self.onToggleCollapsed = onToggleCollapsed
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: edgeAlignment) {
-                VStack(spacing: 7) {
-                    shelfContent
-
-                    if let notice = store.undoNotice {
-                        UndoToastView(notice: notice)
-                            .transition(.move(edge: shelfEdge).combined(with: .opacity))
-                    }
-                }
-                .frame(width: shelfWidth)
+        ZStack(alignment: edgeAlignment) {
+            shelfContent
                 .offset(
                     x: store.isPanelCollapsed
-                        ? edgeSign * (shelfWidth + 78)
-                        : (shelfSide == .left ? 14 : -14)
+                        ? edgeSign * (ShelfLayoutMetrics.panelWidth + 78)
+                        : 0
                 )
 
-                collapseTab
-                    .offset(
-                        x: store.isPanelCollapsed ? 0 : edgeSign * 86,
-                        y: collapseTabVerticalOffset(panelHeight: geometry.size.height)
-                    )
-                    .opacity(store.isPanelCollapsed ? 1 : 0)
-                    .animation(nil, value: store.undoNotice?.id)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edgeAlignment)
+            collapseTab
+                .offset(x: store.isPanelCollapsed ? 0 : edgeSign * 86)
+                .opacity(store.isPanelCollapsed ? 1 : 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edgeAlignment)
         .animation(.smooth(duration: 0.3, extraBounce: 0), value: store.isPanelCollapsed)
-        .animation(.smooth(duration: 0.26, extraBounce: 0), value: store.undoNotice?.id)
         .task {
             await store.send(.fileMonitoringStarted).finish()
         }
     }
 
-    private func collapseTabVerticalOffset(panelHeight: CGFloat) -> CGFloat {
-        guard store.undoNotice != nil,
-              panelHeight > collapsedPanelHeight + 1 else { return 0 }
-        return -undoToastHeight / 2
-    }
-
     private var shelfContent: some View {
         VStack(spacing: 0) {
-                if store.items.isEmpty {
-                    emptyState
-                } else {
-                    ScrollView(.vertical) {
-                        LazyVStack(spacing: 8) {
-                            ForEach(shelfRows) { row in
-                                switch row {
-                                case let .item(item):
-                                    ShelfItemRow(store: store, item: item)
-                                        .opacity(reorderingItemIDs.contains(item.id) ? 0 : 1)
+            if store.items.isEmpty {
+                Image("MenuBarIcon")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: ShelfLayoutMetrics.cardSpacing) {
+                        ForEach(shelfRows) { row in
+                            switch row {
+                            case let .item(item):
+                                ShelfItemRow(store: store, item: item)
+                                    .opacity(reorderingItemIDs.contains(item.id) ? 0 : 1)
                                     .transition(
                                         .opacity.combined(with: .scale(scale: 0.96))
                                     )
-                                case .externalDropGap:
-                                    Color.clear
-                                        .frame(width: 100, height: 24)
-                                        .accessibilityHidden(true)
-                                }
+                            case .externalDropGap:
+                                Color.clear
+                                    .frame(width: ShelfLayoutMetrics.cardSize.width, height: 16)
+                                    .accessibilityHidden(true)
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 36)
-                        .animation(
-                            .smooth(duration: 0.26, extraBounce: 0),
-                            value: shelfRows.map(\.id)
-                        )
                     }
-                    .scrollIndicators(.hidden)
+                    .padding(ShelfLayoutMetrics.contentInset)
+                    .animation(
+                        .smooth(duration: 0.26, extraBounce: 0),
+                        value: shelfRows.map(\.id)
+                    )
                 }
+                .scrollIndicators(.hidden)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .glassEffect(
@@ -155,26 +143,21 @@ struct ShelfView: View {
                 )
         }
         .clipShape(.rect(cornerRadius: 19))
-        .shadow(color: .black.opacity(0.2), radius: 14, x: 0, y: 7)
         .overlay(alignment: .topLeading) {
-            CornerControlsLayout(.topLeading) {
-                cornerControl(topLeadingAction)
-            }
+            CornerControlsLayout(.topLeading) { cornerControl(topLeadingAction) }
+                .fixedSize()
         }
         .overlay(alignment: .topTrailing) {
-            CornerControlsLayout(.topTrailing) {
-                cornerControl(topTrailingAction)
-            }
+            CornerControlsLayout(.topTrailing) { cornerControl(topTrailingAction) }
+                .fixedSize()
         }
         .overlay(alignment: .bottomLeading) {
-            CornerControlsLayout(.bottomLeading) {
-                cornerControl(bottomLeadingAction)
-            }
+            CornerControlsLayout(.bottomLeading) { cornerControl(bottomLeadingAction) }
+                .fixedSize()
         }
         .overlay(alignment: .bottomTrailing) {
-            CornerControlsLayout(.bottomTrailing) {
-                cornerControl(bottomTrailingAction)
-            }
+            CornerControlsLayout(.bottomTrailing) { cornerControl(bottomTrailingAction) }
+                .fixedSize()
         }
     }
 
@@ -210,30 +193,10 @@ struct ShelfView: View {
         switch action {
         case .none:
             EmptyView()
-
         case .addFiles:
             cornerButton(action, perform: addFiles)
-
         case .paste:
             cornerButton(action, perform: pasteFromClipboard)
-
-        case .selectAll:
-            cornerButton(action) {
-                store.send(.selectAll)
-            }
-            .disabled(store.items.isEmpty)
-
-        case .lockAll:
-            cornerButton(
-                action,
-                systemImage: !store.items.isEmpty && store.items.allSatisfy(\.locked)
-                    ? "lock.open"
-                    : "lock"
-            ) {
-                store.send(.toggleAllLocks)
-            }
-            .disabled(store.items.isEmpty)
-
         case .clearShelf:
             if !store.items.isEmpty {
                 cornerButton(action) {
@@ -241,47 +204,41 @@ struct ShelfView: View {
                 }
                 .disabled(!store.items.contains(where: { !$0.locked }))
             }
-
         case .recentlyRemoved:
             cornerButton(action, showsActivity: !store.history.isEmpty) {
                 isHistoryPresented.toggle()
             }
             .disabled(store.history.isEmpty)
-            .popover(isPresented: $isHistoryPresented, arrowEdge: shelfEdge) {
+            .popover(isPresented: $isHistoryPresented, arrowEdge: historyArrowEdge) {
                 HistoryView(store: store) {
                     isHistoryPresented = false
                 }
             }
-
         case .quickNote:
             cornerButton(action) {
                 store.send(.createNoteButtonTapped)
             }
-
         case .settings:
             cornerButton(action) {
                 NotificationCenter.default.post(name: .showIttanSettingsRequested, object: nil)
-            }
-
-        case .collapseShelf:
-            cornerButton(action) {
-                ShelfPanelController.shared.toggleCollapsed()
             }
         }
     }
 
     private func cornerButton(
         _ action: ShelfCornerAction,
-        systemImage: String? = nil,
         showsActivity: Bool = false,
         perform: @escaping () -> Void
     ) -> some View {
         Button(action: perform) {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: systemImage ?? action.systemImage)
+                Image(systemName: action.systemImage)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
+                    .frame(
+                        width: ShelfLayoutMetrics.cornerControlSize,
+                        height: ShelfLayoutMetrics.cornerControlSize
+                    )
                     .glassEffect(.regular.interactive(), in: Circle())
 
                 if showsActivity {
@@ -290,7 +247,11 @@ struct ShelfView: View {
                         .frame(width: 6, height: 6)
                 }
             }
-            .frame(width: 24, height: 24)
+            .frame(
+                width: ShelfLayoutMetrics.cornerControlSize,
+                height: ShelfLayoutMetrics.cornerControlSize
+            )
+            .background(ShelfCornerHitMarker())
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -316,7 +277,7 @@ struct ShelfView: View {
 
     private var collapseTab: some View {
         Button {
-            ShelfPanelController.shared.toggleCollapsed()
+            onToggleCollapsed()
         } label: {
             ZStack {
                 tabShape
@@ -350,19 +311,6 @@ struct ShelfView: View {
         }
         .help("Show Ittan · Right-click for options")
     }
-
-    private var emptyState: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(store.isDropTargeted ? Color.accentColor : Color.secondary)
-
-            Text(store.isDropTargeted ? "Let go to add" : "Drop files here")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 }
 
 private enum ShelfItemLayout {
@@ -395,14 +343,17 @@ private struct ShelfItemRow: View {
 
             VStack(spacing: 5) {
                 ShelfThumbnail(url: item.url)
-                    .frame(width: 64, height: 64)
+                    .frame(
+                        width: ShelfLayoutMetrics.thumbnailSide,
+                        height: ShelfLayoutMetrics.thumbnailSide
+                    )
 
                 Text(item.exists ? item.displayName : "File is unavailable")
                     .font(.system(size: 10.5, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(item.exists ? Color.primary : Color.red)
-                    .frame(width: 92)
+                    .frame(width: ShelfLayoutMetrics.titleWidth)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
@@ -435,7 +386,10 @@ private struct ShelfItemRow: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(width: 100, height: 94)
+        .frame(
+            width: ShelfLayoutMetrics.cardSize.width,
+            height: ShelfLayoutMetrics.cardSize.height
+        )
         .background {
             RoundedRectangle(
                 cornerRadius: ShelfItemLayout.containerCornerRadius,
@@ -897,6 +851,24 @@ private final class IttanQuickLookController: NSObject, QLPreviewPanelDataSource
     }
 }
 
+private extension NSMenu {
+    func addItem(item title: String, action: Selector) {
+        addItem(NSMenuItem(title: title, action: action, keyEquivalent: ""))
+    }
+}
+
+final class ShelfCornerHitView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private struct ShelfCornerHitMarker: NSViewRepresentable {
+    func makeNSView(context: Context) -> ShelfCornerHitView {
+        ShelfCornerHitView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: ShelfCornerHitView, context: Context) {}
+}
+
 private struct HistoryView: View {
     let store: StoreOf<ShelfFeature>
     let onBecameEmpty: () -> Void
@@ -915,10 +887,10 @@ private struct HistoryView: View {
                 Button("Clear") {
                     closeThen { store.send(.clearHistoryButtonTapped) }
                 }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .disabled(store.history.isEmpty)
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .disabled(store.history.isEmpty)
             }
             .padding(14)
 
@@ -929,7 +901,6 @@ private struct HistoryView: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 28, weight: .regular))
                         .foregroundStyle(.tertiary)
-
                     Text("No Removed Items")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -942,25 +913,22 @@ private struct HistoryView: View {
                             HStack(spacing: 10) {
                                 ShelfThumbnail(url: item.url)
                                     .frame(width: 38, height: 38)
-
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.displayName)
                                         .font(.system(size: 11, weight: .medium))
                                         .lineLimit(1)
                                         .truncationMode(.middle)
-                                    Text(item.parentName)
-                                        .font(.system(size: 9.5))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                                    if let folder = folderName(for: item) {
+                                        Text(folder)
+                                            .font(.system(size: 9.5))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
-
                                 Spacer(minLength: 6)
-
                                 Button("Restore") {
                                     if store.history.count == 1 {
-                                        closeThen {
-                                            store.send(.restoreFromHistory(item.id))
-                                        }
+                                        closeThen { store.send(.restoreFromHistory(item.id)) }
                                     } else {
                                         store.send(.restoreFromHistory(item.id))
                                     }
@@ -985,17 +953,17 @@ private struct HistoryView: View {
         }
     }
 
+    private func folderName(for item: ShelfItem) -> String? {
+        let parent = item.url.deletingLastPathComponent()
+        guard UUID(uuidString: parent.lastPathComponent) == nil else { return nil }
+        return FileManager.default.displayName(atPath: parent.path)
+    }
+
     private func closeThen(_ action: @escaping @MainActor () -> Void) {
         onBecameEmpty()
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(140))
             action()
         }
-    }
-}
-
-private extension NSMenu {
-    func addItem(item title: String, action: Selector) {
-        addItem(NSMenuItem(title: title, action: action, keyEquivalent: ""))
     }
 }

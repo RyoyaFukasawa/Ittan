@@ -2,6 +2,8 @@ import ComposableArchitecture
 import Foundation
 
 struct ShelfStorageClient: Sendable {
+    var loadWorkspace: @Sendable (ShelfPlacement) -> ShelfWorkspace
+    var saveWorkspace: @Sendable (ShelfWorkspace) throws -> Void
     var loadItems: @Sendable () -> [ShelfItem]
     var loadHistory: @Sendable () -> [ShelfItem]
     var saveItems: @Sendable ([ShelfItem]) throws -> Void
@@ -11,6 +13,8 @@ struct ShelfStorageClient: Sendable {
     var rename: @Sendable (URL, String) throws -> URL
 
     init(store: ShelfStore) {
+        loadWorkspace = { store.loadWorkspace(defaultPlacement: $0) }
+        saveWorkspace = { try store.saveWorkspace($0) }
         loadItems = { store.load() }
         loadHistory = { store.loadHistory() }
         saveItems = { try store.save($0) }

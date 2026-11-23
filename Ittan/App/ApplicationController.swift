@@ -7,6 +7,7 @@ final class ApplicationController: NSObject {
 
     private var dragMonitor: DragMonitor?
     private var preferencesObserver: NSObjectProtocol?
+    private var appearanceObserver: NSObjectProtocol?
     private var settingsRequestObserver: NSObjectProtocol?
 
     private override init() {
@@ -14,14 +15,26 @@ final class ApplicationController: NSObject {
     }
 
     func start() {
+        IttanPreferences.migrateCornerActions()
         preferencesObserver = NotificationCenter.default.addObserver(
             forName: .ittanPreferencesDidChange,
             object: nil,
             queue: .main
         ) { _ in
             Task { @MainActor in
-                ShelfPanelController.shared.preferencesDidChange()
-                IttanStore.shelf.send(.historyLimitChanged(IttanPreferences.historyLimit))
+                ShelfWindowCoordinator.shared.preferencesDidChange()
+                IttanStore.workspace.send(
+                    .historyLimitChanged(IttanPreferences.historyLimit)
+                )
+            }
+        }
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: .ittanShelfAppearanceDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                ShelfWindowCoordinator.shared.applyAppearancePreferences()
             }
         }
         settingsRequestObserver = NotificationCenter.default.addObserver(
@@ -34,30 +47,38 @@ final class ApplicationController: NSObject {
 
         observe { [weak self] in
             guard self != nil else { return }
-            let items = IttanStore.shelf.items
-            let undoNotice = IttanStore.shelf.undoNotice
-            ShelfPanelController.shared.layoutDidChange(
-                items,
-                hasUndoNotice: undoNotice != nil
-            )
+            _ = IttanStore.workspace.shelves
+            _ = IttanStore.workspace.activeShelfID
+            ShelfWindowCoordinator.shared.synchronize()
         }
 
         dragMonitor = DragMonitor(
             onDragStarted: {
-                guard IttanPreferences.expandsForExternalDrag else { return }
-                ShelfPanelController.shared.externalDragStarted(
-                    on: ScreenResolver.screenUnderPointer()
-                )
+                NewShelfDropTargetController.shared.hide()
+                ShelfWindowCoordinator.shared.relocateActiveShelfToPointer()
+                if IttanPreferences.expandsForExternalDrag {
+                    ShelfWindowCoordinator.shared.externalDragStarted(
+                        on: ScreenResolver.screenUnderPointer()
+                    )
+                }
+            },
+            onDragMoved: {
+                ShelfWindowCoordinator.shared.relocateActiveShelfToPointer()
+            },
+            onDragShaken: {
+                let pointer = NSEvent.mouseLocation
+                guard !ShelfWindowCoordinator.shared.containsShelf(at: pointer) else { return }
+                NewShelfDropTargetController.shared.show(at: pointer)
             },
             onDragEnded: {
-                ShelfPanelController.shared.externalDragEnded()
+                NewShelfDropTargetController.shared.hide()
+                ShelfWindowCoordinator.shared.externalDragEnded()
             }
         )
         dragMonitor?.start()
 
-        if !IttanStore.shelf.items.isEmpty {
-            ShelfPanelController.shared.show()
-        }
+        ShelfWindowCoordinator.shared.synchronize()
+        ShelfWindowCoordinator.shared.applyAppearancePreferences()
     }
 
     func stop() {
@@ -66,6 +87,10 @@ final class ApplicationController: NSObject {
         if let preferencesObserver {
             NotificationCenter.default.removeObserver(preferencesObserver)
             self.preferencesObserver = nil
+        }
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(appearanceObserver)
+            self.appearanceObserver = nil
         }
         if let settingsRequestObserver {
             NotificationCenter.default.removeObserver(settingsRequestObserver)

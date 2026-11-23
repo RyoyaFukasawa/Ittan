@@ -29,21 +29,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 private struct IttanMenuView: View {
-    private let store = IttanStore.shelf
+    private let store = IttanStore.workspace
+
+    private var activeItemCount: Int {
+        guard let id = store.activeShelfID else { return 0 }
+        return store.shelves[id: id]?.items.count ?? 0
+    }
 
     var body: some View {
         Button("Show Ittan") {
-            ShelfPanelController.shared.show()
+            ShelfWindowCoordinator.shared.showActive()
+        }
+
+        Button("New Note") {
+            createNote()
         }
 
         Button("Clear Shelf") {
-            store.send(.clearButtonTapped)
+            ShelfWindowCoordinator.shared.clearActive()
         }
-        .disabled(store.items.isEmpty)
+        .disabled(activeItemCount == 0)
+
+        Menu("Recently Removed") {
+            if store.history.isEmpty {
+                Button("None") {}
+                    .disabled(true)
+            } else {
+                ForEach(store.history) { item in
+                    Button(item.displayName) {
+                        store.send(.restoreFromHistory(
+                            id: item.id,
+                            defaultPlacement: IttanStore.defaultPlacement
+                        ))
+                        ShelfWindowCoordinator.shared.showActive()
+                    }
+                }
+                Divider()
+                Button("Clear") {
+                    store.send(.clearHistory)
+                }
+            }
+        }
 
         Divider()
 
-        Text("\(store.items.count) item\(store.items.count == 1 ? "" : "s")")
+        Text("\(activeItemCount) item\(activeItemCount == 1 ? "" : "s")")
             .foregroundStyle(.secondary)
 
         Divider()
@@ -62,5 +92,12 @@ private struct IttanMenuView: View {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    private func createNote() {
+        let id = store.activeShelfID ?? store.shelves.first?.id
+        guard let id else { return }
+        store.send(.shelves(.element(id: id, action: .createNoteButtonTapped)))
+        ShelfWindowCoordinator.shared.showActive()
     }
 }

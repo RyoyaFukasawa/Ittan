@@ -28,6 +28,48 @@ struct ShelfStore: @unchecked Sendable {
         itemsURL.deletingLastPathComponent().appendingPathComponent("history.json")
     }
 
+    var workspaceURL: URL {
+        itemsURL.deletingLastPathComponent().appendingPathComponent("workspace.json")
+    }
+
+    func loadWorkspace(defaultPlacement: ShelfPlacement) -> ShelfWorkspace {
+        if fileManager.fileExists(atPath: workspaceURL.path) {
+            guard let data = try? Data(contentsOf: workspaceURL),
+                  let workspace = try? JSONDecoder.ittan.decode(ShelfWorkspace.self, from: data),
+                  workspace.version == ShelfWorkspace.currentVersion else {
+                return ShelfWorkspace(shelves: [], history: [], activeShelfID: nil)
+            }
+            return workspace
+        }
+
+        // Legacy migration contract: keep these readers until every supported
+        // release has written workspace.json at least once.
+        let legacyItems = load()
+        let legacyHistory = loadHistory()
+        let shelf = legacyItems.isEmpty
+            ? nil
+            : ShelfWorkspace.Shelf(
+                id: UUID(),
+                name: nil,
+                items: legacyItems,
+                placement: defaultPlacement
+            )
+        let workspace = ShelfWorkspace(
+            shelves: shelf.map { [$0] } ?? [],
+            history: legacyHistory,
+            activeShelfID: shelf?.id
+        )
+        try? saveWorkspace(workspace)
+        return workspace
+    }
+
+    func saveWorkspace(_ workspace: ShelfWorkspace) throws {
+        let directory = workspaceURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = try JSONEncoder.ittan.encode(workspace)
+        try data.write(to: workspaceURL, options: .atomic)
+    }
+
     func load() -> [ShelfItem] {
         guard let data = try? Data(contentsOf: itemsURL),
               let decoded = try? JSONDecoder.ittan.decode([ShelfItem].self, from: data) else {

@@ -57,10 +57,6 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
         url.lastPathComponent
     }
 
-    var parentName: String {
-        url.deletingLastPathComponent().lastPathComponent
-    }
-
     var exists: Bool {
         FileManager.default.fileExists(atPath: path)
     }

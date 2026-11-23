@@ -3,6 +3,47 @@ import Testing
 
 @Suite("Drag state machine")
 struct DragStateMachineTests {
+    @Test("Three quick horizontal reversals trigger a shake")
+    func detectsShake() {
+        var detector = CursorShakeDetector()
+
+        let results = [
+            detector.update(point: .init(x: 0, y: 0), time: 0),
+            detector.update(point: .init(x: 32, y: 1), time: 0.08),
+            detector.update(point: .init(x: -2, y: 0), time: 0.16),
+            detector.update(point: .init(x: 32, y: 1), time: 0.24),
+            detector.update(point: .init(x: -2, y: 0), time: 0.32),
+        ]
+        #expect(results == [false, false, false, false, true])
+    }
+
+    @Test("Small cursor jitter does not trigger a shake")
+    func ignoresJitter() {
+        var detector = CursorShakeDetector()
+        let points = [0.0, 4, -3, 5, -2, 3, -4]
+
+        for (index, x) in points.enumerated() {
+            let triggered = detector.update(
+                point: .init(x: x, y: 0),
+                time: Double(index) * 0.05
+            )
+            #expect(!triggered)
+        }
+    }
+
+    @Test("Slow reversals do not combine into a shake")
+    func ignoresSlowReversals() {
+        var detector = CursorShakeDetector()
+        let samples: [(Double, Double)] = [
+            (0, 0), (32, 0.1), (-2, 0.5), (32, 0.9), (-2, 1.3),
+        ]
+
+        for (x, time) in samples {
+            let triggered = detector.update(point: .init(x: x, y: 0), time: time)
+            #expect(!triggered)
+        }
+    }
+
     @Test("A changed supported-content drag starts and mouse release ends")
     func startAndEnd() {
         var machine = DragStateMachine(initialChangeCount: 10)
