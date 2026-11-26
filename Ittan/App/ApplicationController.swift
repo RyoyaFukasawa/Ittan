@@ -16,6 +16,7 @@ final class ApplicationController: NSObject {
 
     func start() {
         IttanPreferences.migrateCornerActions()
+        IttanStore.workspace.send(.ensureShelf(placement: IttanStore.defaultPlacement))
         preferencesObserver = NotificationCenter.default.addObserver(
             forName: .ittanPreferencesDidChange,
             object: nil,
@@ -54,7 +55,6 @@ final class ApplicationController: NSObject {
 
         dragMonitor = DragMonitor(
             onDragStarted: {
-                NewShelfDropTargetController.shared.hide()
                 ShelfWindowCoordinator.shared.relocateActiveShelfToPointer()
                 if IttanPreferences.expandsForExternalDrag {
                     ShelfWindowCoordinator.shared.externalDragStarted(
@@ -65,13 +65,7 @@ final class ApplicationController: NSObject {
             onDragMoved: {
                 ShelfWindowCoordinator.shared.relocateActiveShelfToPointer()
             },
-            onDragShaken: {
-                let pointer = NSEvent.mouseLocation
-                guard !ShelfWindowCoordinator.shared.containsShelf(at: pointer) else { return }
-                NewShelfDropTargetController.shared.show(at: pointer)
-            },
             onDragEnded: {
-                NewShelfDropTargetController.shared.hide()
                 ShelfWindowCoordinator.shared.externalDragEnded()
             }
         )

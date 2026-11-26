@@ -1,8 +1,8 @@
 # Ittan
 
-Ittan is a native macOS file shelf. Start dragging a file or folder and Ittan
-appears on the active display. Park items there, switch to the destination,
-then drag them back out.
+Ittan is a native macOS file shelf. It keeps one shelf. Start dragging a file
+or folder, or choose Show Ittan, and that shelf appears on the active display.
+Park items there, switch to the destination, then drag them back out.
 
 <p>
   <a href="https://github.com/RyoyaFukasawa/Ittan/releases/latest/download/Ittan.dmg">
@@ -15,7 +15,7 @@ then drag them back out.
 Ittan is an early macOS 26 prototype. It currently supports:
 
 - Files and folders from Finder and other apps that provide file URLs
-- Automatic shelf appearance when a file drag begins
+- One shelf, shown when a file drag begins and from Show Ittan
 - Multiple displays and all Spaces
 - Persistent path references across launches
 - Quick Look thumbnails, opening, revealing, copying, and removing items

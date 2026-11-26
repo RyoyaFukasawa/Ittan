@@ -6,20 +6,61 @@ import Testing
 @Suite("Shelf workspace feature")
 @MainActor
 struct ShelfWorkspaceFeatureTests {
-    @Test("Creating a shelf imports URLs and makes it active")
-    func createsShelf() async throws {
+    @Test("An empty workspace gains one shelf")
+    func ensuresShelf() async throws {
         let fixture = try WorkspaceFeatureFixture()
         defer { fixture.cleanUp() }
-        let file = try fixture.makeFile("created.txt")
         let placement = fixture.defaultPlacement
         let store = fixture.testStore()
 
-        await store.send(.createShelf(urls: [file], placement: placement))
+        await store.send(.ensureShelf(placement: placement))
 
         #expect(store.state.shelves.count == 1)
-        #expect(store.state.shelves.first?.items.map(\.path) == [ShelfItem.normalizedPath(for: file)])
+        #expect(store.state.shelves.first?.items.isEmpty == true)
         #expect(store.state.shelves.first?.placement == placement)
         #expect(store.state.activeShelfID == store.state.shelves.first?.id)
+    }
+
+    @Test("A workspace that already has one shelf stays unchanged")
+    func keepsExistingShelf() async throws {
+        let fixture = try WorkspaceFeatureFixture()
+        defer { fixture.cleanUp() }
+        let shelf = ShelfFeature.State(id: UUID(), placement: fixture.defaultPlacement)
+        let store = fixture.testStore(shelves: [shelf], activeShelfID: shelf.id)
+
+        await store.send(.ensureShelf(placement: fixture.defaultPlacement))
+
+        #expect(store.state.shelves.map(\.id) == [shelf.id])
+        #expect(store.state.activeShelfID == shelf.id)
+    }
+
+    @Test("Extra shelves fold into the active shelf")
+    func foldsExtraShelves() async throws {
+        let fixture = try WorkspaceFeatureFixture()
+        defer { fixture.cleanUp() }
+        let keptItem = ShelfItem(url: try fixture.makeFile("kept.txt"))
+        let extraItem = ShelfItem(url: try fixture.makeFile("extra.txt"))
+        let duplicate = ShelfItem(url: URL(fileURLWithPath: keptItem.path))
+        let kept = ShelfFeature.State(
+            id: UUID(),
+            items: [keptItem],
+            placement: fixture.defaultPlacement
+        )
+        let extra = ShelfFeature.State(
+            id: UUID(),
+            items: [duplicate, extraItem],
+            placement: fixture.defaultPlacement
+        )
+        let store = fixture.testStore(
+            shelves: [extra, kept],
+            activeShelfID: kept.id
+        )
+
+        await store.send(.ensureShelf(placement: fixture.defaultPlacement))
+
+        #expect(store.state.shelves.map(\.id) == [kept.id])
+        #expect(store.state.shelves.first?.items.map(\.path) == [keptItem.path, extraItem.path])
+        #expect(store.state.activeShelfID == kept.id)
     }
 
     @Test("Closing a shelf moves its items into global history")

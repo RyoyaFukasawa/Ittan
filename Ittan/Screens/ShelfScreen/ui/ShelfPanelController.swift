@@ -19,6 +19,10 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     private var pendingPanelResize: Task<Void, Never>?
     private var pendingMoveCommit: Task<Void, Never>?
     private var isTemporarilyExpandedForExternalDrag = false
+    private var isPresentedForExternalDrag = false
+    private var isHeldVisibleWhileEmpty = false
+    private var presentationGeneration = 0
+    private var lastItemCount = 0
     private var didAcceptCurrentExternalDrop = false
     private var isApplyingFrame = false
     private var isPerformingNativeMove = false
@@ -54,7 +58,12 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         super.init()
     }
 
+    func holdVisibleWhileEmpty() {
+        isHeldVisibleWhileEmpty = true
+    }
+
     func show(on requestedScreen: NSScreen? = nil) {
+        presentationGeneration += 1
         pendingPanelResize?.cancel()
         let needsInitialPosition = panel == nil
         let panel = panel ?? makePanel()
@@ -99,6 +108,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     func externalDragStarted(on screen: NSScreen?) {
         let wasOpen = panel?.isVisible == true && !isCollapsed
         isTemporarilyExpandedForExternalDrag = !wasOpen
+        isPresentedForExternalDrag = true
         didAcceptCurrentExternalDrop = false
         show(on: screen)
     }
@@ -112,10 +122,6 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         pendingMoveCommit?.cancel()
         panel?.orderOut(nil)
         panel = nil
-    }
-
-    func contains(screenPoint: CGPoint) -> Bool {
-        panel?.isVisible == true && panel?.frame.contains(screenPoint) == true
     }
 
     var hostingScreen: NSScreen? { panel?.screen }
@@ -174,12 +180,22 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     func layoutDidChange(_ items: [ShelfItem]) {
+        // Dropping the last item hides the shelf again. Show Ittan and an
+        // in-progress external drag keep this same shelf on screen while empty.
+        if lastItemCount > 0, items.isEmpty {
+            isHeldVisibleWhileEmpty = false
+            isPresentedForExternalDrag = false
+        }
+        lastItemCount = items.count
+
+        let keepEmptyVisible = items.isEmpty
+            && (isPresentedForExternalDrag || isHeldVisibleWhileEmpty)
         guard let panel else {
-            if !items.isEmpty { show() }
+            if !items.isEmpty || isPresentedForExternalDrag { show() }
             return
         }
 
-        if items.isEmpty {
+        if items.isEmpty, !keepEmptyVisible {
             panel.orderOut(nil)
         } else {
             panel.orderFrontRegardless()
@@ -187,11 +203,13 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     func externalDragEnded() {
+        let generation = presentationGeneration
         Task { @MainActor in
             // AppKit may report the global drag ending just before the local
             // destination finishes `performDragOperation`, so allow that
             // callback to record a successful Ittan drop first.
             try? await Task.sleep(for: .milliseconds(180))
+            guard generation == presentationGeneration else { return }
 
             if isTemporarilyExpandedForExternalDrag,
                !didAcceptCurrentExternalDrop {
@@ -201,9 +219,18 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
             isTemporarilyExpandedForExternalDrag = false
             didAcceptCurrentExternalDrop = false
 
-            guard store.items.isEmpty else { return }
+            guard store.items.isEmpty, !isHeldVisibleWhileEmpty else {
+                isPresentedForExternalDrag = false
+                return
+            }
             try? await Task.sleep(for: .milliseconds(170))
-            guard store.items.isEmpty else { return }
+            guard generation == presentationGeneration,
+                  store.items.isEmpty,
+                  !isHeldVisibleWhileEmpty else {
+                isPresentedForExternalDrag = false
+                return
+            }
+            isPresentedForExternalDrag = false
             panel?.orderOut(nil)
         }
     }

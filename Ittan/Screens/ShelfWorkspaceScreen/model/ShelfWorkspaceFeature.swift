@@ -57,7 +57,7 @@ struct ShelfWorkspaceFeature {
         case activateShelf(id: ShelfFeature.State.ID)
         case addURLs([URL], to: ShelfFeature.State.ID)
         case closeShelf(id: ShelfFeature.State.ID)
-        case createShelf(urls: [URL], placement: ShelfPlacement)
+        case ensureShelf(placement: ShelfPlacement)
         case dockShelf(
             id: ShelfFeature.State.ID,
             edge: ShelfEdge,
@@ -113,18 +113,20 @@ struct ShelfWorkspaceFeature {
                     state.activeShelfID = state.shelves.first?.id
                 }
 
-            case let .createShelf(urls, placement):
-                var items: [ShelfItem] = []
-                _ = AddShelfItems.apply(urls, to: &items, fileExists: storage.fileExists)
-                let shelf = ShelfFeature.State(
-                    id: uuid(),
-                    items: items,
-                    history: state.history,
-                    dimensions: .default,
-                    placement: placement
-                )
-                state.shelves.append(shelf)
-                state.activeShelfID = shelf.id
+            case let .ensureShelf(placement):
+                if state.shelves.isEmpty {
+                    let shelf = ShelfFeature.State(
+                        id: uuid(),
+                        items: [],
+                        history: state.history,
+                        dimensions: .default,
+                        placement: placement
+                    )
+                    state.shelves.append(shelf)
+                    state.activeShelfID = shelf.id
+                } else if !keepSingleShelf(&state) {
+                    return .none
+                }
 
             case let .dockShelf(id, edge, preferredMidY, screenID, screenFrame, isCollapsed):
                 var shelves = Array(state.shelves)
@@ -236,6 +238,30 @@ struct ShelfWorkspaceFeature {
             persist(state.workspace)
             return .none
         }
+    }
+
+    /// Folds every extra shelf into the active one. Returns false when the
+    /// workspace already has exactly one active shelf.
+    private func keepSingleShelf(_ state: inout State) -> Bool {
+        let keptID = state.activeShelfID.flatMap { id in
+            state.shelves[id: id] == nil ? nil : id
+        } ?? state.shelves.ids.first
+        guard let keptID, var kept = state.shelves[id: keptID] else { return false }
+
+        let extras = state.shelves.filter { $0.id != keptID }
+        guard !extras.isEmpty || state.activeShelfID != keptID else { return false }
+
+        if !extras.isEmpty {
+            var seen = Set(kept.items.map(\.path))
+            for extra in extras {
+                for item in extra.items where seen.insert(item.path).inserted {
+                    kept.items.append(item)
+                }
+            }
+            state.shelves = .init(uniqueElements: [kept])
+        }
+        state.activeShelfID = keptID
+        return true
     }
 
     private func persist(_ workspace: ShelfWorkspace) {

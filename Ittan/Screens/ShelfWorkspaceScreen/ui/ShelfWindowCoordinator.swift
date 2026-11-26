@@ -42,6 +42,7 @@ final class ShelfWindowCoordinator {
     }
 
     func showActive() {
+        activeController?.holdVisibleWhileEmpty()
         relocateActiveShelfToPointer()
         activeController?.show()
     }
@@ -77,10 +78,6 @@ final class ShelfWindowCoordinator {
 
     func externalDragEnded() {
         controllers.values.forEach { $0.externalDragEnded() }
-    }
-
-    func containsShelf(at screenPoint: CGPoint) -> Bool {
-        controllers.values.contains { $0.contains(screenPoint: screenPoint) }
     }
 
     private var activeShelfScreenID: String? {
